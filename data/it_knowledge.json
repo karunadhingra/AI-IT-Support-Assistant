@@ -1,0 +1,146 @@
+[
+    {
+        "id": "wifi_001",
+        "category": "Network",
+        "problem": "Wi-Fi is not working",
+        "symptoms": [
+            "Cannot connect to Wi-Fi",
+            "Wi-Fi keeps disconnecting",
+            "Laptop cannot find the wireless network"
+        ],
+        "possible_causes": [
+            "Wi-Fi is disabled",
+            "Router problem",
+            "Network adapter problem",
+            "Incorrect network configuration"
+        ],
+        "troubleshooting_steps": [
+            "Check whether Wi-Fi is enabled.",
+            "Restart the Wi-Fi connection.",
+            "Check whether other devices can connect to the same network.",
+            "Restart the router if other devices are also disconnected."
+        ],
+        "escalate_when": [
+            "The problem continues after restarting the router.",
+            "Multiple devices cannot connect to the network."
+        ]
+    },
+    {
+        "id": "audio_001",
+        "category": "Audio",
+        "problem": "No sound on computer",
+        "symptoms": [
+            "Speakers produce no sound",
+            "Headphones have no audio",
+            "Audio suddenly stopped"
+        ],
+        "possible_causes": [
+            "Muted volume",
+            "Incorrect output device",
+            "Audio driver problem",
+            "Headphone or speaker connection problem"
+        ],
+        "troubleshooting_steps": [
+            "Check the volume level.",
+            "Make sure the correct output device is selected.",
+            "Reconnect headphones or speakers.",
+            "Restart the application producing the audio."
+        ],
+        "escalate_when": [
+            "No audio device is detected.",
+            "The problem continues after checking the output device."
+        ]
+    } ,
+    {
+    "id": "performance_001",
+    "category": "Performance",
+    "problem": "Computer is running very slowly",
+    "symptoms": [
+        "Applications take a long time to open",
+        "Computer responds slowly",
+        "System freezes or lags frequently",
+        "Computer is slow after startup"
+    ],
+    "possible_causes": [
+        "Too many applications running",
+        "Low available storage space",
+        "Too many startup applications",
+        "Insufficient system resources",
+        "Background processes consuming resources"
+    ],
+    "troubleshooting_steps": [
+        "Close applications that are not currently being used.",
+        "Open Task Manager or the system monitor and check which applications are using high CPU or memory.",
+        "Check whether the computer has enough free storage space.",
+        "Disable unnecessary applications from starting automatically.",
+        "Restart the computer and check whether the performance improves."
+    ],
+    "escalate_when": [
+        "The computer remains extremely slow after basic troubleshooting.",
+        "The system frequently freezes or crashes.",
+        "Hardware problems such as disk errors are suspected."
+    ]
+    },
+    {
+    "id": "bluetooth_001",
+    "category": "Bluetooth",
+    "problem": "Bluetooth device is not connecting",
+    "symptoms": [
+        "Bluetooth headphones will not connect",
+        "Bluetooth device cannot be detected",
+        "Previously connected device is no longer connecting",
+        "Bluetooth connection keeps disconnecting"
+    ],
+    "possible_causes": [
+        "Bluetooth is disabled",
+        "Device is not in pairing mode",
+        "Device is already connected to another device",
+        "Bluetooth driver problem",
+        "Bluetooth connection interference"
+    ],
+    "troubleshooting_steps": [
+        "Make sure Bluetooth is enabled on the computer.",
+        "Make sure the Bluetooth device is powered on and in pairing mode.",
+        "Move the device closer to the computer.",
+        "Remove the Bluetooth device from the computer and pair it again.",
+        "Restart Bluetooth and try connecting again.",
+        "Restart the computer if the device still cannot connect."
+    ],
+    "escalate_when": [
+        "Bluetooth cannot be enabled.",
+        "Multiple Bluetooth devices fail to connect.",
+        "The Bluetooth adapter is not detected by the operating system."
+    ]
+    },
+    {
+    "id": "dns_001",
+    "category": "Network",
+    "problem": "Internet is connected but websites are not loading",
+    "symptoms": [
+        "Wi-Fi shows as connected but websites do not open",
+        "Browser cannot load websites",
+        "Some websites fail to load",
+        "Internet works on other devices but not this computer"
+    ],
+    "possible_causes": [
+        "DNS resolution problem",
+        "Browser problem",
+        "Incorrect network configuration",
+        "DNS server is unavailable",
+        "Network connection problem"
+    ],
+    "troubleshooting_steps": [
+        "Check whether other websites can be opened.",
+        "Try opening the website in another browser.",
+        "Check whether other devices can access the internet using the same network.",
+        "Restart the network connection.",
+        "Restart the computer and router if necessary.",
+        "Check whether the computer can resolve domain names correctly."
+    ],
+    "escalate_when": [
+        "Other devices also cannot access websites.",
+        "The problem continues after restarting the network connection.",
+        "DNS or network configuration appears to be corrupted."
+    ]
+    }
+]
