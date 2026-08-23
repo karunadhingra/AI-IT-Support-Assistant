@@ -5,8 +5,8 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 sys.path.insert(0, str(APP_DIR))
 
-from support import diagnose_problem
-from app.semantic_search import search_knowledge
+from app.support import diagnose_problem
+from app.semantic_search import search_knowledge,format_article_response
 
 
 def test_wifi_problem():
@@ -69,3 +69,31 @@ def test_semantic_search_finds_relevant_article():
     assert article is not None
     assert article["problem"] == "Bluetooth device is not connecting"
     assert score >= 0.5
+
+def test_format_article_response():
+    article = {
+        "problem": "Wi-Fi is not working",
+        "symptoms": [
+            "Cannot connect to Wi-Fi",
+            "Wi-Fi keeps disconnecting"
+        ],
+        "possible_causes": [
+            "Wi-Fi is disabled",
+            "Router problem"
+        ],
+        "troubleshooting_steps": [
+            "Check whether Wi-Fi is enabled.",
+            "Restart the Wi-Fi connection."
+        ],
+        "escalate_when": [
+            "The problem continues after restarting the router."
+        ]
+    }
+
+    response = format_article_response(article)
+
+    assert "Problem: Wi-Fi is not working" in response
+    assert "- Cannot connect to Wi-Fi" in response
+    assert "- Wi-Fi is disabled" in response
+    assert "1. Check whether Wi-Fi is enabled." in response
+    assert "- The problem continues after restarting the router." in response

@@ -46,8 +46,31 @@ def search_knowledge(query):
     return knowledge[best_index], best_score
 
 
+def format_article_response(article):
+    response = []
+
+    response.append(f"Problem: {article['problem']}")
+
+    response.append("\nSymptoms:")
+    for symptom in article["symptoms"]:
+        response.append(f"- {symptom}")
+
+    response.append("\nPossible causes:")
+    for cause in article["possible_causes"]:
+        response.append(f"- {cause}")
+
+    response.append("\nTroubleshooting steps:")
+    for i, step in enumerate(article["troubleshooting_steps"], start=1):
+        response.append(f"{i}. {step}")
+
+    response.append("\nEscalate when:")
+    for condition in article["escalate_when"]:
+        response.append(f"- {condition}")
+
+    return "\n".join(response)
+
 if __name__ == "__main__":
-    query = "My computer is showing a blue screen"
+    query = "My Bluetooth headphones won't connect"
 
     article, score = search_knowledge(query)
 
@@ -56,8 +79,7 @@ if __name__ == "__main__":
     if article is None:
         print("\nNo relevant article found.")
     else:
-        print("\nBest matching article:")
-        print(article["problem"])
+        print("\n"+ format_article_response(article))
 
-    print("\nSimilarity score:")
-    print(round(float(score), 4))
+        print("\nSimilarity score:")
+        print(round(float(score), 4))
