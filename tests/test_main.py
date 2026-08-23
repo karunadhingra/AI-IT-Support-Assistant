@@ -6,6 +6,7 @@ APP_DIR = Path(__file__).resolve().parents[1] / "app"
 sys.path.insert(0, str(APP_DIR))
 
 from support import diagnose_problem
+from app.semantic_search import search_knowledge
 
 
 def test_wifi_problem():
@@ -51,3 +52,20 @@ def test_unknown_problem():
     result = diagnose_problem("My printer is making strange noises")
 
     assert result["category"] == "Unknown"
+
+def test_semantic_search_rejects_unrelated_query():
+    article, score = search_knowledge(
+        "My computer is showing a blue screen"
+    )
+
+    assert article is None
+    assert score < 0.5
+
+def test_semantic_search_finds_relevant_article():
+    article, score = search_knowledge(
+        "My Bluetooth headphones won't connect"
+    )
+
+    assert article is not None
+    assert article["problem"] == "Bluetooth device is not connecting"
+    assert score >= 0.5

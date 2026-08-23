@@ -1,7 +1,8 @@
 import numpy as np
 
-from embeddings import model
-from knowledge import load_knowledge_base
+from app import knowledge
+from app.embeddings import model
+from app.knowledge import load_knowledge_base
 
 
 def create_article_text(article):
@@ -37,8 +38,12 @@ def search_knowledge(query):
     )
 
     best_index = np.argmax(similarities)
+    best_score = similarities[best_index]
 
-    return knowledge[best_index], similarities[best_index]
+    if best_score < 0.5:
+        return None, best_score
+
+    return knowledge[best_index], best_score
 
 
 if __name__ == "__main__":
@@ -48,9 +53,11 @@ if __name__ == "__main__":
 
     print("\nUser query:")
     print(query)
-
-    print("\nBest matching article:")
-    print(article["problem"])
+    if article is None:
+        print("\nNo relevant article found.")
+    else:
+        print("\nBest matching article:")
+        print(article["problem"])
 
     print("\nSimilarity score:")
     print(round(float(score), 4))

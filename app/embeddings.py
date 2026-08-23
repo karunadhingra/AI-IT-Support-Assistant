@@ -8,4 +8,4 @@ embedding = model.encode(text)
 
 print("Embedding created successfully.")
 print("Vector size:", len(embedding))
-print("First 5 values:", embedding[:5])
+print("First 5 values:", embedding[:5])  
