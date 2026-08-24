@@ -1,6 +1,7 @@
 import numpy as np
+from functools import lru_cache
 
-from app import knowledge
+
 from app.embeddings import model
 from app.knowledge import load_knowledge_base
 
@@ -13,7 +14,7 @@ def create_article_text(article):
         f"Troubleshooting steps: {', '.join(article['troubleshooting_steps'])}"
     )
 
-
+@lru_cache(maxsize=1)
 def load_article_embeddings():
     knowledge = load_knowledge_base()
 

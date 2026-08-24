@@ -1,4 +1,4 @@
-from knowledge import load_knowledge_base
+from app.knowledge import load_knowledge_base
 
 
 def search_knowledge_base(problem):

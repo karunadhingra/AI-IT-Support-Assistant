@@ -1,18 +1,17 @@
-from support import diagnose_problem
+from app.semantic_search import search_knowledge, format_article_response
 
 
-print("=================================")
-print("   AI IT Support Assistant")
-print("=================================")
+print("====================================")
+print("       AI IT Support Assistant")
+print("====================================")
+
 
 problem = input("\nDescribe your IT problem: ")
 
-result = diagnose_problem(problem)
+article, score = search_knowledge(problem)
 
-print(f"\nCategory: {result['category']}")
-print(f"Diagnosis: {result['diagnosis']}")
-
-print("\nTroubleshooting steps:")
-
-for number, step in enumerate(result["steps"], start=1):
-    print(f"{number}. {step}")
+if article is None:
+    print("\nSorry, I couldn't find a relevant troubleshooting article.")
+else:
+    print("\n" + format_article_response(article))
+    print("\nSimilarity score:", round(float(score), 4))
