@@ -7,7 +7,7 @@ sys.path.insert(0, str(APP_DIR))
 
 from app.support import diagnose_problem
 from app.semantic_search import search_knowledge,format_article_response
-
+from app.main import get_response
 
 def test_wifi_problem():
     result = diagnose_problem("My Wi-Fi is not working")
@@ -97,3 +97,15 @@ def test_format_article_response():
     assert "- Wi-Fi is disabled" in response
     assert "1. Check whether Wi-Fi is enabled." in response
     assert "- The problem continues after restarting the router." in response
+
+def test_get_response_for_valid_problem():
+    response = get_response("My Bluetooth headphones won't connect")
+
+    assert "Bluetooth device is not connecting" in response
+    assert "Troubleshooting steps:" in response
+    assert "Similarity score:" in response
+
+def test_get_response_for_unknown_problem():
+    response = get_response("My printer is making strange noises")
+
+    assert "Sorry, I couldn't find a relevant troubleshooting article." in response
