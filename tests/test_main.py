@@ -53,7 +53,7 @@ def test_internet_problem():
 
 
 def test_unknown_problem():
-    result = diagnose_problem("My printer is making strange noises")
+    result = diagnose_problem("My washing machine is leaking water")
 
     assert result["category"] == "Unknown"
 

@@ -142,5 +142,200 @@
         "The problem continues after restarting the network connection.",
         "DNS or network configuration appears to be corrupted."
     ]
+        },
+
+    {
+        "id": "printer_001",
+        "category": "Hardware",
+        "problem": "Printer is not working",
+        "symptoms": [
+            "Printer does not print documents",
+            "Printer appears offline",
+            "Print jobs remain stuck in the queue",
+            "Computer cannot detect the printer"
+        ],
+        "possible_causes": [
+            "Printer is turned off",
+            "Printer is not connected to the network",
+            "Incorrect printer selected",
+            "Print queue problem",
+            "Printer driver problem"
+        ],
+        "troubleshooting_steps": [
+            "Make sure the printer is powered on.",
+            "Check whether the printer is connected to the computer or network.",
+            "Make sure the correct printer is selected.",
+            "Clear any stuck documents from the print queue.",
+            "Restart the printer and try printing again.",
+            "Check whether the printer driver is installed correctly."
+        ],
+        "escalate_when": [
+            "The printer is not detected after reconnecting it.",
+            "Print jobs continue to fail after clearing the queue.",
+            "A hardware problem is suspected."
+        ]
+    },
+
+    {
+        "id": "keyboard_001",
+        "category": "Hardware",
+        "problem": "Keyboard is not working",
+        "symptoms": [
+            "Keyboard does not type",
+            "Some keys do not respond",
+            "Keyboard randomly stops working",
+            "Wireless keyboard cannot connect"
+        ],
+        "possible_causes": [
+            "Keyboard is disconnected",
+            "Wireless keyboard battery is low",
+            "USB port problem",
+            "Keyboard driver problem",
+            "Keyboard hardware failure"
+        ],
+        "troubleshooting_steps": [
+            "Check whether the keyboard is properly connected.",
+            "Try connecting the keyboard to another USB port.",
+            "Replace or recharge the batteries if it is a wireless keyboard.",
+            "Restart the computer.",
+            "Check whether the keyboard is detected by the operating system.",
+            "Test another keyboard if available."
+        ],
+        "escalate_when": [
+            "The keyboard is not detected after reconnecting it.",
+            "Multiple keyboards fail to work on the computer.",
+            "Hardware failure is suspected."
+        ]
+    },
+
+    {
+        "id": "mouse_001",
+        "category": "Hardware",
+        "problem": "Mouse or trackpad is not working",
+        "symptoms": [
+            "Mouse cursor does not move",
+            "Mouse clicks do not work",
+            "Wireless mouse cannot connect",
+            "Laptop trackpad does not respond"
+        ],
+        "possible_causes": [
+            "Mouse is disconnected",
+            "Wireless mouse battery is low",
+            "USB port problem",
+            "Trackpad is disabled",
+            "Mouse or trackpad driver problem"
+        ],
+        "troubleshooting_steps": [
+            "Check whether the mouse is properly connected.",
+            "Try another USB port if using a wired mouse.",
+            "Replace or recharge the batteries if using a wireless mouse.",
+            "Check whether the laptop trackpad is enabled.",
+            "Restart the computer.",
+            "Test another mouse if available."
+        ],
+        "escalate_when": [
+            "The mouse or trackpad is not detected after troubleshooting.",
+            "Another working mouse also fails.",
+            "Hardware failure is suspected."
+        ]
+    },
+
+    {
+        "id": "update_001",
+        "category": "Software",
+        "problem": "Windows update is not installing",
+        "symptoms": [
+            "Windows update fails",
+            "Update gets stuck during installation",
+            "Windows repeatedly asks to install the same update",
+            "Update displays an error message"
+        ],
+        "possible_causes": [
+            "Insufficient storage space",
+            "Internet connection problem",
+            "Corrupted update files",
+            "Windows Update service problem",
+            "System files are corrupted"
+        ],
+        "troubleshooting_steps": [
+            "Check whether the computer has enough free storage space.",
+            "Make sure the computer has a stable internet connection.",
+            "Restart the computer and try the update again.",
+            "Run the Windows Update troubleshooter.",
+            "Check whether Windows Update is running correctly.",
+            "Try installing the update again after restarting the system."
+        ],
+        "escalate_when": [
+            "The update repeatedly fails with the same error.",
+            "Important system updates cannot be installed.",
+            "System files appear to be corrupted."
+        ]
+    },
+
+    {
+        "id": "application_001",
+        "category": "Software",
+        "problem": "Application is not opening",
+        "symptoms": [
+            "Application does not start",
+            "Application closes immediately",
+            "Application becomes unresponsive",
+            "Application displays an error when starting"
+        ],
+        "possible_causes": [
+            "Application files are corrupted",
+            "Insufficient system resources",
+            "Application is outdated",
+            "Operating system compatibility problem",
+            "Another process is interfering with the application"
+        ],
+        "troubleshooting_steps": [
+            "Close the application completely and try opening it again.",
+            "Restart the computer.",
+            "Check whether the application has available updates.",
+            "Check whether the computer has enough free memory and storage.",
+            "Try repairing or reinstalling the application.",
+            "Check whether the application displays an error message."
+        ],
+        "escalate_when": [
+            "The application continues to crash after reinstalling it.",
+            "Multiple applications fail to open.",
+            "The application displays a serious or unknown error."
+        ]
+    },
+
+    {
+        "id": "overheating_001",
+        "category": "Hardware",
+        "problem": "Laptop is overheating",
+        "symptoms": [
+            "Laptop becomes very hot",
+            "Fan runs loudly",
+            "Computer becomes slow when hot",
+            "Laptop shuts down unexpectedly"
+        ],
+        "possible_causes": [
+            "Blocked air vents",
+            "Dust buildup",
+            "Too many resource-intensive applications running",
+            "Poor ventilation",
+            "Cooling fan problem"
+        ],
+        "troubleshooting_steps": [
+            "Place the laptop on a hard and flat surface.",
+            "Make sure the air vents are not blocked.",
+            "Close applications that are using high CPU resources.",
+            "Allow the laptop to cool down before using it again.",
+            "Clean dust from the external air vents carefully.",
+            "Check whether the cooling fan is working properly."
+        ],
+        "escalate_when": [
+            "The laptop continues overheating during normal use.",
+            "The laptop shuts down because of overheating.",
+            "The cooling fan is not working properly.",
+            "Hardware damage is suspected."
+        ]
     }
+
 ]
+
