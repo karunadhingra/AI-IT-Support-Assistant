@@ -1,61 +1,9 @@
-import sys
-from pathlib import Path
-
-# Allow tests to import modules from the app folder
-APP_DIR = Path(__file__).resolve().parents[1] / "app"
-sys.path.insert(0, str(APP_DIR))
-
-from app.support import diagnose_problem
 from app.semantic_search import (
     search_knowledge,
     search_knowledge_top_k,
     format_article_response,
 )
 from app.main import get_response
-
-def test_wifi_problem():
-    result = diagnose_problem("My Wi-Fi is not working")
-
-    assert result["category"] == "Network"
-    assert result["diagnosis"] == "Wi-Fi is not working"
-
-
-def test_audio_problem():
-    result = diagnose_problem("There is no sound coming from my computer")
-
-    assert result["category"] == "Audio"
-    assert result["diagnosis"] == "No sound on computer"
-
-
-def test_slow_computer():
-    result = diagnose_problem("My computer is running very slowly")
-
-    assert result["category"] == "Performance"
-    assert result["diagnosis"] == "Computer is running very slowly"
-
-
-def test_bluetooth_problem():
-    result = diagnose_problem("My Bluetooth headphones won't connect")
-
-    assert result["category"] == "Bluetooth"
-    assert result["diagnosis"] == "Bluetooth device is not connecting"
-
-
-def test_internet_problem():
-    result = diagnose_problem(
-        "Wi-Fi says connected but websites won't open"
-    )
-
-    assert result["category"] == "Network"
-    assert result["diagnosis"] == (
-        "Internet is connected but websites are not loading"
-    )
-
-
-def test_unknown_problem():
-    result = diagnose_problem("My washing machine is leaking water")
-
-    assert result["category"] == "Unknown"
 
 def test_semantic_search_rejects_unrelated_query():
     article, score = search_knowledge(

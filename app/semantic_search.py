@@ -1,9 +1,11 @@
 import numpy as np
 from functools import lru_cache
 
-
 from app.embeddings import model
 from app.knowledge import load_knowledge_base
+
+
+SIMILARITY_THRESHOLD = 0.5
 
 
 def create_article_text(article):
@@ -13,6 +15,7 @@ def create_article_text(article):
         f"Possible causes: {', '.join(article['possible_causes'])}\n"
         f"Troubleshooting steps: {', '.join(article['troubleshooting_steps'])}"
     )
+
 
 @lru_cache(maxsize=1)
 def load_article_embeddings():
@@ -27,7 +30,8 @@ def load_article_embeddings():
 
     return knowledge, embeddings
 
-def search_knowledge_top_k(query, top_k=3):
+
+def _calculate_similarities(query):
     knowledge, embeddings = load_article_embeddings()
 
     query_embedding = model.encode(query)
@@ -37,7 +41,12 @@ def search_knowledge_top_k(query, top_k=3):
         * np.linalg.norm(query_embedding)
     )
 
-    
+    return knowledge, similarities
+
+
+def search_knowledge_top_k(query, top_k=3):
+    knowledge, similarities = _calculate_similarities(query)
+
     sorted_indexes = np.argsort(similarities)[::-1]
 
     results = []
@@ -45,32 +54,22 @@ def search_knowledge_top_k(query, top_k=3):
     for index in sorted_indexes[:top_k]:
         score = similarities[index]
 
-        
-        if score >= 0.5:
+        if score >= SIMILARITY_THRESHOLD:
             results.append((knowledge[index], score))
 
     return results
 
 
 def search_knowledge(query):
-    results = search_knowledge_top_k(query, top_k=1)
+    knowledge, similarities = _calculate_similarities(query)
 
-    if not results:
-        knowledge, embeddings = load_article_embeddings()
+    best_index = np.argmax(similarities)
+    best_score = similarities[best_index]
 
-        query_embedding = model.encode(query)
-
-        similarities = np.dot(embeddings, query_embedding) / (
-            np.linalg.norm(embeddings, axis=1)
-            * np.linalg.norm(query_embedding)
-        )
-
-        best_score = np.max(similarities)
-
+    if best_score < SIMILARITY_THRESHOLD:
         return None, best_score
 
-    return results[0]
-
+    return knowledge[best_index], best_score
 
 
 def format_article_response(article):
@@ -95,6 +94,7 @@ def format_article_response(article):
         response.append(f"- {condition}")
 
     return "\n".join(response)
+
 
 if __name__ == "__main__":
     query = "My Bluetooth headphones won't connect"
