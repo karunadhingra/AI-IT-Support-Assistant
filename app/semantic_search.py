@@ -27,8 +27,7 @@ def load_article_embeddings():
 
     return knowledge, embeddings
 
-
-def search_knowledge(query):
+def search_knowledge_top_k(query, top_k=3):
     knowledge, embeddings = load_article_embeddings()
 
     query_embedding = model.encode(query)
@@ -38,13 +37,40 @@ def search_knowledge(query):
         * np.linalg.norm(query_embedding)
     )
 
-    best_index = np.argmax(similarities)
-    best_score = similarities[best_index]
+    
+    sorted_indexes = np.argsort(similarities)[::-1]
 
-    if best_score < 0.5:
+    results = []
+
+    for index in sorted_indexes[:top_k]:
+        score = similarities[index]
+
+        
+        if score >= 0.5:
+            results.append((knowledge[index], score))
+
+    return results
+
+
+def search_knowledge(query):
+    results = search_knowledge_top_k(query, top_k=1)
+
+    if not results:
+        knowledge, embeddings = load_article_embeddings()
+
+        query_embedding = model.encode(query)
+
+        similarities = np.dot(embeddings, query_embedding) / (
+            np.linalg.norm(embeddings, axis=1)
+            * np.linalg.norm(query_embedding)
+        )
+
+        best_score = np.max(similarities)
+
         return None, best_score
 
-    return knowledge[best_index], best_score
+    return results[0]
+
 
 
 def format_article_response(article):
@@ -73,14 +99,17 @@ def format_article_response(article):
 if __name__ == "__main__":
     query = "My Bluetooth headphones won't connect"
 
-    article, score = search_knowledge(query)
+    results = search_knowledge_top_k(query, top_k=3)
 
     print("\nUser query:")
     print(query)
-    if article is None:
-        print("\nNo relevant article found.")
-    else:
-        print("\n"+ format_article_response(article))
 
-        print("\nSimilarity score:")
-        print(round(float(score), 4))
+    if not results:
+        print("\nNo relevant articles found.")
+    else:
+        print(f"\nTop {len(results)} relevant articles:")
+
+        for i, (article, score) in enumerate(results, start=1):
+            print(f"\n--- Result {i} ---")
+            print(f"Problem: {article['problem']}")
+            print(f"Similarity score: {round(float(score), 4)}")

@@ -6,7 +6,11 @@ APP_DIR = Path(__file__).resolve().parents[1] / "app"
 sys.path.insert(0, str(APP_DIR))
 
 from app.support import diagnose_problem
-from app.semantic_search import search_knowledge,format_article_response
+from app.semantic_search import (
+    search_knowledge,
+    search_knowledge_top_k,
+    format_article_response,
+)
 from app.main import get_response
 
 def test_wifi_problem():
@@ -109,3 +113,32 @@ def test_get_response_for_unknown_problem():
     response = get_response("My printer is making strange noises")
 
     assert "Sorry, I couldn't find a relevant troubleshooting article." in response
+
+def test_top_k_returns_results():
+    results = search_knowledge_top_k(
+        "My Bluetooth headphones won't connect",
+        top_k=3
+    )
+
+    assert len(results) <= 3
+    assert len(results) > 0
+
+
+def test_top_k_results_are_sorted():
+    results = search_knowledge_top_k(
+        "My Bluetooth headphones won't connect",
+        top_k=3
+    )
+
+    scores = [score for article, score in results]
+
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_top_k_rejects_irrelevant_query():
+    results = search_knowledge_top_k(
+        "My washing machine is leaking",
+        top_k=3
+    )
+
+    assert results == []
