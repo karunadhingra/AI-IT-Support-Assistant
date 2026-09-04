@@ -3,7 +3,9 @@ from app.semantic_search import (
     search_knowledge_top_k,
     format_article_response,
 )
+
 from app.main import get_response
+from app.rag import build_context
 
 def test_semantic_search_rejects_unrelated_query():
     article, score = search_knowledge(
@@ -90,3 +92,22 @@ def test_top_k_rejects_irrelevant_query():
     )
 
     assert results == []
+
+def test_build_context_returns_relevant_knowledge():
+    context = build_context("My printer is not printing")
+
+    assert context is not None
+    assert "Printer is not working" in context
+
+
+def test_build_context_returns_overheating_knowledge():
+    context = build_context("My laptop is getting very hot")
+
+    assert context is not None
+    assert "Laptop is overheating" in context
+
+
+def test_build_context_returns_none_for_irrelevant_query():
+    context = build_context("My washing machine is leaking water")
+
+    assert context is None
