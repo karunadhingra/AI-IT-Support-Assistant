@@ -1,10 +1,11 @@
+from unittest.mock import patch
 from app.semantic_search import (
     search_knowledge,
     search_knowledge_top_k,
     format_article_response,
 )
 
-from app.main import get_response
+from app.rag import generate_answer
 from app.rag import build_context
 
 def test_semantic_search_rejects_unrelated_query():
@@ -52,17 +53,6 @@ def test_format_article_response():
     assert "1. Check whether Wi-Fi is enabled." in response
     assert "- The problem continues after restarting the router." in response
 
-def test_get_response_for_valid_problem():
-    response = get_response("My Bluetooth headphones won't connect")
-
-    assert "Bluetooth device is not connecting" in response
-    assert "Troubleshooting steps:" in response
-    assert "Similarity score:" in response
-
-def test_get_response_for_unknown_problem():
-    response = get_response("My printer is making strange noises")
-
-    assert "Sorry, I couldn't find a relevant troubleshooting article." in response
 
 def test_top_k_returns_results():
     results = search_knowledge_top_k(
@@ -111,3 +101,28 @@ def test_build_context_returns_none_for_irrelevant_query():
     context = build_context("My washing machine is leaking water")
 
     assert context is None
+def test_build_context_contains_troubleshooting_steps():
+    context = build_context("My Wi-Fi is not working")
+
+    assert context is not None
+    assert "Troubleshooting steps:" in context
+    assert "Check whether Wi-Fi is enabled." in context
+    assert "Restart the Wi-Fi connection." in context
+def test_generate_answer_uses_ollama():
+    fake_response = {
+        "message": {
+            "content": (
+                "Diagnosis:\n"
+                "The Wi-Fi connection is not working.\n\n"
+                "Troubleshooting steps:\n"
+                "1. Check whether Wi-Fi is enabled.\n"
+            )
+        }
+    }
+
+    with patch("app.rag.ollama.chat", return_value=fake_response) as mock_chat:
+        answer = generate_answer("My Wi-Fi is not working")
+
+    assert "Diagnosis:" in answer
+    assert "Troubleshooting steps:" in answer
+    mock_chat.assert_called_once()
