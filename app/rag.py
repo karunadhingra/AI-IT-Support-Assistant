@@ -74,17 +74,21 @@ User problem:
 Answer:
 """
 
-    response = ollama.chat(
-        model="llama3.2:3b",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
+    try:
+        response = ollama.chat(
+            model="llama3.2:3b",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
 
-    return response["message"]["content"]
+        return response["message"]["content"]
+
+    except Exception:
+        return "Sorry, the AI service is currently unavailable."
 
 
 if __name__ == "__main__":
