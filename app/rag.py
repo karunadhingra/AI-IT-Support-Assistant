@@ -35,11 +35,14 @@ def build_context(query, top_k=3):
     return "\n\n".join(context_parts)
 
 
-def generate_answer(query):
-    context = build_context(query, top_k=1)
+def generate_answer(query, conversation_history=None):
+    results = search_knowledge_top_k(query, top_k=1)
 
-    if context is None:
+    if not results:
         return "Sorry, I couldn't find a relevant troubleshooting article."
+
+    article, score = results[0]
+    context = build_context(query, top_k=1)
 
     prompt = f"""
 You are an AI IT Support Assistant.
@@ -64,9 +67,13 @@ Rules:
 - Do not add any information that is not present in the context.
 - Keep the response concise.
 - Preserve the original troubleshooting steps exactly.
+- Do not create or change the source information.
 
 Context:
 {context}
+
+Conversation history:
+{conversation_history or "No previous conversation."}
 
 User problem:
 {query}
@@ -85,7 +92,15 @@ Answer:
             ]
         )
 
-        return response["message"]["content"]
+        answer = response["message"]["content"]
+
+        source = (
+            f"\n\nSource:\n"
+            f"IT Knowledge Base — "
+            f"{article['id']}: {article['problem']}"
+        )
+
+        return answer + source
 
     except Exception:
         return "Sorry, the AI service is currently unavailable."

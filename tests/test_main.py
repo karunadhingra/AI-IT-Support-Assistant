@@ -126,3 +126,24 @@ def test_generate_answer_uses_ollama():
     assert "Diagnosis:" in answer
     assert "Troubleshooting steps:" in answer
     mock_chat.assert_called_once()
+def test_generate_answer_includes_source():
+    fake_response = {
+        "message": {
+            "content": (
+                "Diagnosis:\n"
+                "The Wi-Fi connection is not working.\n\n"
+                "Troubleshooting steps:\n"
+                "1. Check whether Wi-Fi is enabled.\n"
+            )
+        }
+    }
+
+    with patch(
+        "app.rag.ollama.chat",
+        return_value=fake_response
+    ):
+        answer = generate_answer("My Wi-Fi is not working")
+
+    assert "Source:" in answer
+    assert "wifi_001" in answer
+    assert "Wi-Fi is not working" in answer
