@@ -1,4 +1,5 @@
-from app.rag import generate_answer
+from app.agent import decide_action
+from app.rag import generate_answer, generate_diagnostic_answer
 from app.diagnostics.network import ping_host
 from app.diagnostics.dns import dns_lookup
 from app.diagnostics.disk import check_disk_space
@@ -6,77 +7,141 @@ from app.diagnostics.memory import check_memory
 from app.escalation import create_support_ticket, should_escalate
 
 
-def route_issue(query):
-    query_lower = query.lower()
+def route_issue(query, conversation_history=None):
+    """
+    Ask the AI agent to determine the appropriate route.
+    """
 
-    network_keywords = [
-        "wifi",
-        "wi-fi",
-        "internet",
-        "network",
-        "dns",
-        "ping"
-    ]
+    decision = decide_action(
+        query,
+        conversation_history=conversation_history
+    )
 
-    performance_keywords = [
-        "slow",
-        "lag",
-        "memory",
-        "ram",
-        "disk",
-        "storage",
-        "space",
-        "freezing"
-    ]
+    action_to_route = {
+        "follow_up": "follow_up",
+        "rag": "rag",
+        "network_diagnostics": "network",
+        "performance_diagnostics": "performance",
+    }
 
-    for keyword in network_keywords:
-        if keyword in query_lower:
-            return "network"
-
-    for keyword in performance_keywords:
-        if keyword in query_lower:
-            return "performance"
-
-    return "rag"
+    return action_to_route.get(
+        decision.get("action"),
+        "rag"
+    )
 
 
 def run_diagnostics(route):
     if route == "network":
         return {
             "ping": ping_host("8.8.8.8"),
-            "dns": dns_lookup("google.com")
+            "dns": dns_lookup("google.com"),
         }
 
     if route == "performance":
         return {
             "disk": check_disk_space(),
-            "memory": check_memory()
+            "memory": check_memory(),
         }
 
     return {}
 
 
 def handle_query(query, conversation_history=None):
-    route = route_issue(query)
+    """
+    Main AI-agent orchestration flow.
+    """
 
-    if route == "rag":
+    decision = decide_action(
+        query,
+        conversation_history=conversation_history
+    )
+
+    action = decision.get(
+        "action",
+        "rag"
+    )
+
+    # ---------------------------------------------------------
+    # FOLLOW-UP QUESTION
+    # ---------------------------------------------------------
+
+    if action == "follow_up":
+
+        question = decision.get(
+            "question",
+            "Could you provide a little more information about the problem?"
+        )
+
         return {
-            "route": route,
-            "answer": generate_answer(
-                query,
-                conversation_history=conversation_history
-            )
+            "route": "follow_up",
+            "answer": question,
+            "question": question,
+            "agent_decision": decision,
         }
+
+    # ---------------------------------------------------------
+    # RAG
+    # ---------------------------------------------------------
+
+    if action == "rag":
+
+        answer = generate_answer(
+            query,
+            conversation_history=conversation_history
+        )
+
+        return {
+            "route": "rag",
+            "answer": answer,
+            "agent_decision": decision,
+        }
+
+    # ---------------------------------------------------------
+    # DIAGNOSTICS
+    # ---------------------------------------------------------
+
+    if action == "network_diagnostics":
+        route = "network"
+
+    elif action == "performance_diagnostics":
+        route = "performance"
+
+    else:
+        route = "rag"
+
     diagnostics = run_diagnostics(route)
 
+    # ---------------------------------------------------------
+    # ESCALATION
+    # ---------------------------------------------------------
+
     if should_escalate(diagnostics):
+
+        ticket = create_support_ticket(
+            query,
+            diagnostics
+        )
+
         return {
             "route": route,
             "diagnostics": diagnostics,
-            "escalation": create_support_ticket(query, diagnostics)
+            "escalation": ticket,
+            "agent_decision": decision,
         }
+
+    # ---------------------------------------------------------
+    # NATURAL AI RESPONSE
+    # ---------------------------------------------------------
+
+    answer = generate_diagnostic_answer(
+        query,
+        diagnostics,
+        conversation_history=conversation_history
+    )
 
     return {
         "route": route,
-        "diagnostics": diagnostics
+        "diagnostics": diagnostics,
+        "answer": answer,
+        "agent_decision": decision,
     }

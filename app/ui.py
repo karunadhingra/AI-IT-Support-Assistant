@@ -1,10 +1,13 @@
 import sys
 from pathlib import Path
 
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
 import streamlit as st
 
 from app.router import handle_query
@@ -18,32 +21,22 @@ st.set_page_config(
 )
 
 
-# -----------------------------
-# Session State
-# -----------------------------
-
 if "memory" not in st.session_state:
     st.session_state.memory = ConversationMemory()
+
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
-# -----------------------------
-# Page Header
-# -----------------------------
-
 st.title("🤖 AI IT Support Assistant")
 
 st.write(
     "Describe your IT problem in everyday language and "
-    "the assistant will find a solution or run diagnostics."
+    "the AI assistant will investigate it, ask useful "
+    "follow-up questions, or provide troubleshooting help."
 )
 
-
-# -----------------------------
-# Sidebar
-# -----------------------------
 
 with st.sidebar:
     st.header("Conversation")
@@ -56,18 +49,16 @@ with st.sidebar:
     st.divider()
 
     st.write("### Supported Features")
+    st.write("🧠 AI agent decision-making")
+    st.write("💬 Follow-up questions")
     st.write("🔎 Knowledge-base search")
-    st.write("🧠 AI-generated troubleshooting")
+    st.write("📚 Grounded RAG")
     st.write("🌐 Network diagnostics")
     st.write("💾 Disk diagnostics")
     st.write("🧮 Memory diagnostics")
     st.write("🚨 Automatic escalation")
-    st.write("💬 Multi-turn conversation")
+    st.write("📝 Clean support tickets")
 
-
-# -----------------------------
-# Display Previous Messages
-# -----------------------------
 
 for message in st.session_state.messages:
 
@@ -75,68 +66,119 @@ for message in st.session_state.messages:
 
         if message["role"] == "user":
             st.write(message["content"])
+            continue
 
-        else:
-            route = message.get("route")
+        route = message.get("route")
 
-            if route:
-                st.caption(f"Selected route: {route}")
+        if route:
+            st.caption(
+                f"Agent action: {route}"
+            )
 
-            # RAG response
-            if route == "rag":
-                st.markdown(message["content"])
+        # -----------------------------------------------------
+        # NORMAL AI RESPONSE / FOLLOW-UP
+        # -----------------------------------------------------
 
-            # Diagnostic response
-            else:
-                diagnostics = message.get("diagnostics", {})
+        if route in ("rag", "follow_up"):
+            st.markdown(
+                message.get("content", "")
+            )
 
-                if diagnostics:
-                    st.subheader("🔍 Diagnostic Results")
+        # -----------------------------------------------------
+        # DIAGNOSTICS
+        # -----------------------------------------------------
 
-                    for name, diagnostic in diagnostics.items():
+        elif route in ("network", "performance"):
 
-                        with st.expander(name.upper()):
-                            st.json(diagnostic)
+            if message.get("content"):
+                st.markdown(
+                    message["content"]
+                )
 
-                # Escalation
-                if message.get("escalation"):
-                    st.warning("⚠️ Issue requires escalation.")
+            diagnostics = message.get(
+                "diagnostics",
+                {}
+            )
 
-                    st.subheader("🎫 Support Ticket")
-                    st.json(message["escalation"])
+            if diagnostics:
+                st.subheader("🔍 Diagnostic Results")
 
+                for name, diagnostic in diagnostics.items():
 
-# -----------------------------
-# User Input
-# -----------------------------
+                    with st.expander(
+                        name.upper()
+                    ):
+                        st.json(diagnostic)
+
+            # -------------------------------------------------
+            # ESCALATION TICKET
+            # -------------------------------------------------
+
+            if message.get("escalation"):
+
+                ticket = message["escalation"]
+
+                st.warning(
+                    "⚠️ This issue needs human IT support."
+                )
+
+                st.subheader("🎫 Support Ticket")
+
+                st.write(
+                    f"**{ticket.get('title', 'IT Support Ticket')}**"
+                )
+
+                st.write(
+                    f"**Issue:** {ticket.get('issue', '')}"
+                )
+
+                st.write(
+                    f"**Summary:** {ticket.get('summary', '')}"
+                )
+
+                st.write("**What we found:**")
+
+                for finding in ticket.get(
+                    "findings",
+                    []
+                ):
+                    st.write(
+                        f"- {finding}"
+                    )
+
+                st.write(
+                    f"**Action needed:** "
+                    f"{ticket.get('action_needed', '')}"
+                )
+
+                st.write(
+                    f"**Priority:** "
+                    f"{ticket.get('priority', 'Normal')}"
+                )
+
 
 problem = st.chat_input(
     "Describe your IT problem..."
 )
 
 
-# -----------------------------
-# Process User Query
-# -----------------------------
-
 if problem:
 
-    # Display user message immediately
     st.session_state.messages.append(
         {
             "role": "user",
-            "content": problem
+            "content": problem,
         }
     )
 
-    # Add user message to conversation memory
     st.session_state.memory.add_message(
         "user",
         problem
     )
 
-    # Run backend
-    with st.spinner("Analyzing your problem..."):
+    with st.spinner(
+        "AI agent is analyzing your problem..."
+    ):
 
         result = handle_query(
             problem,
@@ -145,24 +187,41 @@ if problem:
             )
         )
 
-    # Prepare assistant message
+    route = result["route"]
+
     assistant_message = {
         "role": "assistant",
-        "route": result["route"]
+        "route": route,
     }
 
-    # RAG result
-    if result["route"] == "rag":
+    # ---------------------------------------------------------
+    # FOLLOW-UP OR RAG
+    # ---------------------------------------------------------
 
-        assistant_message["content"] = result["answer"]
+    if route in ("follow_up", "rag"):
+
+        answer = result.get(
+            "answer",
+            ""
+        )
+
+        assistant_message["content"] = answer
 
         st.session_state.memory.add_message(
             "assistant",
-            result["answer"]
+            answer
         )
 
-    # Diagnostic result
+    # ---------------------------------------------------------
+    # DIAGNOSTICS
+    # ---------------------------------------------------------
+
     else:
+
+        assistant_message["content"] = result.get(
+            "answer",
+            ""
+        )
 
         assistant_message["diagnostics"] = result.get(
             "diagnostics",
@@ -175,13 +234,14 @@ if problem:
 
         st.session_state.memory.add_message(
             "assistant",
-            str(result)
+            result.get(
+                "answer",
+                str(result)
+            )
         )
 
-    # Save assistant response
     st.session_state.messages.append(
         assistant_message
     )
 
-    # Refresh UI
     st.rerun()
