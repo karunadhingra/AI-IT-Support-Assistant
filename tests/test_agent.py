@@ -143,3 +143,107 @@ def test_agent_uses_conversation_history():
     assert "My Wi-Fi isn't working." in prompt
     assert "Yes, but it won't connect." in prompt
     assert "It still won't connect." in prompt
+def test_decide_action_handles_empty_follow_up_question():
+    fake_response = {
+        "message": {
+            "content": (
+                '{"action": "follow_up", '
+                '"reason": "More information is needed.", '
+                '"question": ""}'
+            )
+        }
+    }
+
+    with patch(
+        "app.agent.ollama.chat",
+        return_value=fake_response
+    ):
+        decision = decide_action(
+            "My computer has a problem"
+        )
+
+    assert decision["action"] == "follow_up"
+    assert decision["question"] != ""
+
+def test_agent_does_not_force_diagnostics_for_network_security_question():
+    fake_response = {
+        "message": {
+            "content": (
+                '{"action": "rag", '
+                '"reason": "The knowledge base can explain network security.", '
+                '"question": ""}'
+            )
+        }
+    }
+
+    with patch(
+        "app.agent.ollama.chat",
+        return_value=fake_response
+    ):
+        result = decide_action(
+            "How can I improve my network security?"
+        )
+
+    assert result["action"] == "rag"
+def test_agent_does_not_force_diagnostics_for_performance_advice():
+    fake_response = {
+        "message": {
+            "content": (
+                '{"action": "rag", '
+                '"reason": "The knowledge base can provide performance advice.", '
+                '"question": ""}'
+            )
+        }
+    }
+
+    with patch(
+        "app.agent.ollama.chat",
+        return_value=fake_response
+    ):
+        result = decide_action(
+            "How can I improve my computer's performance?"
+        )
+
+    assert result["action"] == "rag"
+def test_network_diagnostic_reason_matches_selected_action():
+    fake_response = {
+        "message": {
+            "content": (
+                '{"action": "network_diagnostics", '
+                '"reason": "The Wi-Fi connection is failing.", '
+                '"question": ""}'
+            )
+        }
+    }
+
+    with patch(
+        "app.agent.ollama.chat",
+        return_value=fake_response,
+    ):
+        result = decide_action("My Wi-Fi is not working")
+
+    assert result["action"] == "network_diagnostics"
+    assert "performance diagnostics" not in result["reason"].lower()
+
+
+def test_performance_diagnostics_does_not_require_follow_up():
+    fake_response = {
+        "message": {
+            "content": (
+                '{"action": "performance_diagnostics", '
+                '"reason": "The computer is running slowly.", '
+                '"question": ""}'
+            )
+        }
+    }
+
+    with patch(
+        "app.agent.ollama.chat",
+        return_value=fake_response,
+    ):
+        result = decide_action(
+            "My computer is running very slowly"
+        )
+
+    assert result["action"] == "performance_diagnostics"
+    assert result["question"] == ""

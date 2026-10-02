@@ -1,4 +1,6 @@
+
 import json
+import re
 
 import ollama
 
@@ -18,12 +20,8 @@ AGENT_SCHEMA = {
                 "performance_diagnostics",
             ],
         },
-        "reason": {
-            "type": "string",
-        },
-        "question": {
-            "type": "string",
-        },
+        "reason": {"type": "string"},
+        "question": {"type": "string"},
     },
     "required": ["action", "reason", "question"],
 }
@@ -41,7 +39,6 @@ NETWORK_KEYWORDS = [
     "connectivity",
 ]
 
-
 PERFORMANCE_KEYWORDS = [
     "slow",
     "lag",
@@ -56,6 +53,21 @@ PERFORMANCE_KEYWORDS = [
 ]
 
 
+# Informational queries should not automatically trigger diagnostics.
+INFORMATIONAL_PHRASES = [
+    "network security",
+    "improve my network",
+    "learn about network",
+    "explain network",
+    "what is network",
+    "how does network",
+    "how can i improve",
+    "how do i improve",
+    "best practices",
+    "security tips",
+]
+
+
 def _format_history(conversation_history):
     if not conversation_history:
         return "No previous conversation."
@@ -67,9 +79,7 @@ def _format_history(conversation_history):
         content = message.get("content", "")
 
         if content:
-            history_parts.append(
-                f"{role}: {content}"
-            )
+            history_parts.append(f"{role}: {content}")
 
     return "\n".join(history_parts) or "No previous conversation."
 
@@ -100,35 +110,107 @@ def _is_short_follow_up(query):
     return normalized in short_replies
 
 
+def _is_informational_query(query):
+    """Identify common informational questions about IT topics."""
+
+    normalized = re.sub(
+        r"\s+",
+        " ",
+        query.lower().strip(),
+    )
+
+    return any(
+        phrase in normalized
+        for phrase in INFORMATIONAL_PHRASES
+    )
+
+
 def _keyword_route(query):
     """
-    Detect an explicit current problem that has a known
-    diagnostic category.
+    Detect a known diagnostic category.
 
-    Returns:
-        "network_diagnostics"
-        "performance_diagnostics"
-        None
+    Returns a diagnostic action or None.
+    Informational questions are not automatically routed
+    to live diagnostics.
     """
+
+    if _is_informational_query(query):
+        return None
+
+    words = set(
+        re.findall(r"\b[a-z0-9-]+\b", query.lower())
+    )
+
+    # Require stronger evidence of a current network problem.
+    network_problem_indicators = {
+        "not working",
+        "doesn't work",
+        "doesnt work",
+        "cannot connect",
+        "can't connect",
+        "cant connect",
+        "disconnected",
+        "disconnecting",
+        "unavailable",
+        "failed",
+        "failure",
+        "no internet",
+        "keeps dropping",
+        "won't connect",
+        "wont connect",
+        "unable to connect",
+    }
 
     query_lower = query.lower()
 
-    for keyword in NETWORK_KEYWORDS:
-        if keyword in query_lower:
-            return "network_diagnostics"
+    has_network_keyword = any(
+        keyword in words
+        for keyword in NETWORK_KEYWORDS
+    )
 
-    for keyword in PERFORMANCE_KEYWORDS:
-        if keyword in query_lower:
-            return "performance_diagnostics"
+    has_network_problem = any(
+        indicator in query_lower
+        for indicator in network_problem_indicators
+    )
+
+    if has_network_keyword and has_network_problem:
+        return "network_diagnostics"
+
+    # Performance diagnostics require a performance keyword.
+    performance_problem_indicators = {
+        "slow",
+        "lag",
+        "lagging",
+        "freezing",
+        "freeze",
+        "frozen",
+        "running slowly",
+        "runs slowly",
+        "not responding",
+        "high memory usage",
+        "low disk space",
+        "disk full",
+        "running out of space",
+    }
+
+    has_performance_keyword = any(
+        keyword in words
+        for keyword in PERFORMANCE_KEYWORDS
+    )
+
+    has_performance_problem = any(
+        indicator in query_lower
+        for indicator in performance_problem_indicators
+    )
+
+    if has_performance_keyword and has_performance_problem:
+        return "performance_diagnostics"
 
     return None
 
 
 def _fallback_decision(query, conversation_history=None):
-    """
-    Safe deterministic fallback when the local AI agent
-    is unavailable or returns invalid data.
-    """
+    """Provide a deterministic fallback if the agent fails."""
 
     keyword_route = _keyword_route(query)
 
@@ -177,17 +259,14 @@ def _validate_current_problem_route(
     conversation_history=None,
 ):
     """
-    Protect the agent from incorrectly choosing RAG for a
-    clearly identifiable network or performance problem.
-
-    A genuine LLM follow-up decision is preserved because
-    follow-up behavior is tested and may be appropriate when
-    the agent determines that more information is required.
+    Correct a RAG decision when the current message clearly
+    describes a network or performance problem.
     """
 
-    # Short contextual replies should continue using the
-    # previous conversation.
     if _is_short_follow_up(query):
+        return decision
+
+    if _is_informational_query(query):
         return decision
 
     keyword_route = _keyword_route(query)
@@ -195,22 +274,14 @@ def _validate_current_problem_route(
     if keyword_route is None:
         return decision
 
-    # Only correct an incorrect RAG decision here.
-    #
-    # This fixes cases such as:
-    # "My computer is very slow" -> LLM says RAG
-    #
-    # while preserving a deliberate follow-up decision from
-    # the agent.
     if decision.get("action") == "rag":
-
         if keyword_route == "network_diagnostics":
             return {
                 "action": "network_diagnostics",
                 "reason": (
-                    "The current message explicitly describes "
-                    "a network-related problem, so live network "
-                    "diagnostics are appropriate."
+                    "The current message describes a network "
+                    "problem, so live network diagnostics "
+                    "are appropriate."
                 ),
                 "question": "",
             }
@@ -219,80 +290,60 @@ def _validate_current_problem_route(
             return {
                 "action": "performance_diagnostics",
                 "reason": (
-                    "The current message explicitly describes "
-                    "a performance-related problem, so live "
-                    "performance diagnostics are appropriate."
+                    "The current message describes a performance "
+                    "problem, so live performance diagnostics "
+                    "are appropriate."
                 ),
                 "question": "",
             }
 
     return decision
+
+
 def decide_action(query, conversation_history=None):
     """
-    Ask the local LLM to decide the single best next action.
-
-    The latest explicit user problem has priority over older
-    conversation context.
-
-    Short replies such as "yes", "okay", and "do it" are
-    interpreted using the previous conversation.
-
-    Clear network and performance problems are protected by
-    a deterministic route-validation layer after the LLM
-    decision.
+    Ask the local LLM to choose the best action for the
+    user's current IT problem.
     """
 
-    history_text = _format_history(
-        conversation_history
-    )
+    history_text = _format_history(conversation_history)
 
     prompt = f"""
 You are the decision-making agent of an AI IT Support Assistant.
 
-Your job is to decide the SINGLE best next action for the
-user's CURRENT IT problem.
+Choose the SINGLE best next action for the user's CURRENT message.
 
 Available actions:
 
 1. follow_up
-   Ask ONE useful question when important information is
-   genuinely missing.
+   Ask one useful question when important information is missing.
 
 2. rag
-   Use the troubleshooting knowledge base when the problem
-   can be handled using documented troubleshooting guidance.
+   Answer informational questions and use documented
+   troubleshooting guidance from the knowledge base.
 
 3. network_diagnostics
-   Use live ping and DNS checks for network, Wi-Fi,
-   internet, DNS, or connectivity problems.
+   Run live ping and DNS checks for current network failures,
+   Wi-Fi connection failures, internet outages, DNS failures,
+   or connectivity problems.
 
 4. performance_diagnostics
-   Use live disk-space and memory checks for computer
-   performance, slowness, freezing, RAM, storage, or
-   resource problems.
+   Run live disk-space and memory checks for computer slowness,
+   freezing, RAM problems, or storage-related performance issues.
 
-IMPORTANT DECISION RULES:
+Decision rules:
 
-- The latest explicit user message is the PRIMARY signal.
-- A new explicit problem must NOT be overridden by an older
-  problem in the conversation.
-- Conversation history is mainly used to understand short
-  contextual replies such as "yes", "okay", or "do it".
-- If the latest message clearly describes a new problem,
-  treat it as a new investigation.
-- Do not choose follow_up merely because more information
-  could theoretically be useful.
-- Ask a follow-up only when an important piece of information
-  is genuinely required before proceeding.
-- Prefer live diagnostics when they can provide useful
-  evidence about the current problem.
-- For Wi-Fi, internet, network, DNS, router, or connectivity
-  problems, prefer network_diagnostics.
-- For slow computers, lag, freezing, RAM, memory, disk,
-  storage, or performance problems, prefer
-  performance_diagnostics.
-- Never invent diagnostic results.
-- Return only valid JSON matching the supplied schema.
+- Prioritize the latest explicit user message.
+- Use conversation history to understand contextual replies.
+- Do not let an older problem override a new explicit problem.
+- Distinguish asking for information from reporting a live failure.
+- Questions about security concepts, best practices, or how
+  to improve a system should normally use RAG.
+- Prefer diagnostics when the user reports a current failure
+  that the available checks can investigate.
+- Do not invent diagnostic results.
+- If choosing follow_up, provide one relevant, non-empty question.
+- Return valid JSON matching the supplied schema.
 
 Previous conversation:
 {history_text}
@@ -314,7 +365,6 @@ CURRENT user message:
         )
 
         content = response["message"]["content"]
-
         decision = json.loads(content)
 
         valid_actions = {
@@ -330,15 +380,26 @@ CURRENT user message:
                 conversation_history,
             )
 
-        decision["reason"] = decision.get(
-            "reason",
-            "",
-        )
+        decision["reason"] = str(
+            decision.get("reason", "")
+        ).strip()
 
-        decision["question"] = decision.get(
-            "question",
-            "",
-        )
+        decision["question"] = str(
+            decision.get("question", "")
+        ).strip()
+
+        if decision["action"] == "follow_up":
+            if not decision["question"]:
+                decision["question"] = (
+                    "Could you describe the problem "
+                    "you are experiencing?"
+                )
+
+            if not decision["reason"]:
+                decision["reason"] = (
+                    "More information is needed to understand "
+                    "the current problem."
+                )
 
         decision = _validate_current_problem_route(
             query,
@@ -357,7 +418,6 @@ CURRENT user message:
 
 if __name__ == "__main__":
     query = "My Wi-Fi is not working"
-
     decision = decide_action(query)
 
     print("User problem:")
@@ -365,3 +425,4 @@ if __name__ == "__main__":
 
     print("\nAgent decision:")
     print(decision)
+

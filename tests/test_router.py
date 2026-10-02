@@ -161,3 +161,69 @@ def test_handle_query_escalation():
         assert result["route"] == "network"
         assert "escalation" in result
         assert result["escalation"]["status"] == "created"
+def test_handle_query_follow_up():
+    from app.router import handle_query
+
+    fake_decision = {
+        "action": "follow_up",
+        "reason": "More information is needed",
+        "question": "When did the problem start?",
+    }
+
+    with patch(
+        "app.router.decide_action",
+        return_value=fake_decision,
+    ), patch(
+        "app.router.generate_answer",
+    ) as mock_generate_answer:
+
+        result = handle_query("My computer has a problem")
+
+    assert result["route"] == "follow_up"
+    assert result["answer"] == "When did the problem start?"
+    assert result["question"] == "When did the problem start?"
+    mock_generate_answer.assert_not_called()
+
+
+def test_run_network_diagnostics():
+    from app.router import run_diagnostics
+
+    fake_ping = {"success": True}
+    fake_dns = {"success": True}
+
+    with patch(
+        "app.router.ping_host",
+        return_value=fake_ping,
+    ) as mock_ping, patch(
+        "app.router.dns_lookup",
+        return_value=fake_dns,
+    ) as mock_dns:
+
+        result = run_diagnostics("network")
+
+    assert result["ping"] == fake_ping
+    assert result["dns"] == fake_dns
+    mock_ping.assert_called_once_with("8.8.8.8")
+    mock_dns.assert_called_once_with("google.com")
+
+
+def test_run_performance_diagnostics():
+    from app.router import run_diagnostics
+
+    fake_disk = {"free_gb": 50}
+    fake_memory = {"used_percent": 60}
+
+    with patch(
+        "app.router.check_disk_space",
+        return_value=fake_disk,
+    ) as mock_disk, patch(
+        "app.router.check_memory",
+        return_value=fake_memory,
+    ) as mock_memory:
+
+        result = run_diagnostics("performance")
+
+    assert result["disk"] == fake_disk
+    assert result["memory"] == fake_memory
+    mock_disk.assert_called_once_with()
+    mock_memory.assert_called_once_with()
