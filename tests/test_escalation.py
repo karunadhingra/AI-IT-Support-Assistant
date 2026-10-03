@@ -103,3 +103,40 @@ def test_no_escalation_for_normal_diagnostics():
     assert should_escalate(
         diagnostics
     ) is False
+
+def test_no_escalation_for_empty_diagnostics():
+
+    assert should_escalate({}) is False
+
+
+def test_no_escalation_for_successful_ping_only():
+
+    diagnostics = {
+        "ping": {
+            "success": True
+        }
+    }
+
+    assert should_escalate(
+        diagnostics
+    ) is False
+
+
+def test_support_ticket_includes_failed_ping_finding():
+
+    issue = "My internet is not working"
+
+    diagnostics = {
+        "ping": {
+            "success": False
+        }
+    }
+
+    result = create_support_ticket(
+        issue,
+        diagnostics
+    )
+
+    assert result["status"] == "created"
+    assert result["issue"] == issue
+    assert "Internet connectivity check failed." in result["findings"]
