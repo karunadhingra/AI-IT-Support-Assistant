@@ -26,3 +26,14 @@ def test_dns_lookup_failure():
     assert result["success"] is False
     assert result["host"] == "invalid-host"
     assert result["address"] is None
+def test_dns_lookup_handles_os_error():
+
+    with patch(
+        "app.diagnostics.dns.socket.gethostbyname",
+        side_effect=OSError("DNS service unavailable")
+    ):
+        result = dns_lookup("example.com")
+
+    assert result["host"] == "example.com"
+    assert result["success"] is False
+    assert result["address"] is None

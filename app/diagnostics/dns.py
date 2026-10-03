@@ -17,3 +17,10 @@ def dns_lookup(host):
             "success": False,
             "address": None
         }
+
+    except OSError:
+        return {
+            "host": host,
+            "success": False,
+            "address": None
+        }
