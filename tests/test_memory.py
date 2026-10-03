@@ -59,3 +59,13 @@ def test_memory_preserves_conversation_order():
     assert history[0]["content"] == "My Wi-Fi is not working"
     assert history[1]["content"] == "Let's check your network."
     assert history[2]["content"] == "It still isn't working."
+def test_check_memory_handles_os_error():
+
+    with patch(
+        "app.diagnostics.memory.psutil.virtual_memory",
+        side_effect=OSError("Memory information unavailable")
+    ):
+        result = check_memory()
+
+    assert result["success"] is False
+    assert "Memory information unavailable" in result["error"]
