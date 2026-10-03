@@ -227,3 +227,26 @@ def test_run_performance_diagnostics():
     assert result["memory"] == fake_memory
     mock_disk.assert_called_once_with()
     mock_memory.assert_called_once_with()
+def test_handle_query_handles_diagnostic_failure():
+
+    with patch(
+        "app.router.decide_action",
+        return_value={
+            "action": "network_diagnostics",
+            "reason": "Network diagnostics are required",
+            "question": "",
+        }
+    ), patch(
+        "app.router.run_diagnostics",
+        side_effect=RuntimeError("Diagnostic service unavailable"),
+    ):
+
+        from app.router import handle_query
+
+        result = handle_query(
+            "My internet is not working"
+        )
+
+    assert result["route"] == "network"
+    assert result["diagnostics"]["success"] is False
+    assert "Diagnostic service unavailable" in result["diagnostics"]["error"]

@@ -8,10 +8,6 @@ from app.escalation import create_support_ticket, should_escalate
 
 
 def route_issue(query, conversation_history=None):
-    """
-    Ask the AI agent to determine the appropriate route.
-    """
-
     decision = decide_action(
         query,
         conversation_history=conversation_history
@@ -47,26 +43,14 @@ def run_diagnostics(route):
 
 
 def handle_query(query, conversation_history=None):
-    """
-    Main AI-agent orchestration flow.
-    """
-
     decision = decide_action(
         query,
         conversation_history=conversation_history
     )
 
-    action = decision.get(
-        "action",
-        "rag"
-    )
-
-    # ---------------------------------------------------------
-    # FOLLOW-UP QUESTION
-    # ---------------------------------------------------------
+    action = decision.get("action", "rag")
 
     if action == "follow_up":
-
         question = decision.get(
             "question",
             "Could you provide a little more information about the problem?"
@@ -79,12 +63,7 @@ def handle_query(query, conversation_history=None):
             "agent_decision": decision,
         }
 
-    # ---------------------------------------------------------
-    # RAG
-    # ---------------------------------------------------------
-
     if action == "rag":
-
         answer = generate_answer(
             query,
             conversation_history=conversation_history
@@ -96,27 +75,22 @@ def handle_query(query, conversation_history=None):
             "agent_decision": decision,
         }
 
-    # ---------------------------------------------------------
-    # DIAGNOSTICS
-    # ---------------------------------------------------------
-
     if action == "network_diagnostics":
         route = "network"
-
     elif action == "performance_diagnostics":
         route = "performance"
-
     else:
         route = "rag"
 
-    diagnostics = run_diagnostics(route)
-
-    # ---------------------------------------------------------
-    # ESCALATION
-    # ---------------------------------------------------------
+    try:
+        diagnostics = run_diagnostics(route)
+    except Exception as exc:
+        diagnostics = {
+            "success": False,
+            "error": str(exc),
+        }
 
     if should_escalate(diagnostics):
-
         ticket = create_support_ticket(
             query,
             diagnostics
@@ -128,10 +102,6 @@ def handle_query(query, conversation_history=None):
             "escalation": ticket,
             "agent_decision": decision,
         }
-
-    # ---------------------------------------------------------
-    # NATURAL AI RESPONSE
-    # ---------------------------------------------------------
 
     answer = generate_diagnostic_answer(
         query,
