@@ -14,3 +14,14 @@ def test_check_disk_space():
     assert result["total_gb"] == 100
     assert result["used_gb"] == 60
     assert result["free_gb"] == 40
+def test_check_disk_space_handles_os_error():
+
+    with patch(
+        "app.diagnostics.disk.shutil.disk_usage",
+        side_effect=OSError("Disk access failed")
+    ):
+        result = check_disk_space(".")
+
+    assert result["path"] == "."
+    assert result["success"] is False
+    assert "Disk access failed" in result["error"]
