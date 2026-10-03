@@ -30,3 +30,14 @@ def test_ping_host_timeout():
     assert result["host"] == "example.com"
     assert result["success"] is False
     assert result["output"] == "Ping request timed out."
+def test_ping_host_command_error():
+
+    with patch(
+        "app.diagnostics.network.subprocess.run",
+        side_effect=FileNotFoundError("ping command not found")
+    ):
+        result = ping_host("example.com")
+
+    assert result["host"] == "example.com"
+    assert result["success"] is False
+    assert "ping command not found" in result["output"]

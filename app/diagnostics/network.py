@@ -10,20 +10,28 @@ def ping_host(host):
 
     try:
         result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=5
-    )
+            command,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
 
         return {
             "host": host,
             "success": result.returncode == 0,
             "output": result.stdout.strip()
         }
+
     except subprocess.TimeoutExpired:
         return {
             "host": host,
             "success": False,
             "output": "Ping request timed out."
+        }
+
+    except FileNotFoundError as exc:
+        return {
+            "host": host,
+            "success": False,
+            "output": str(exc)
         }
