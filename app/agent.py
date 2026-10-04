@@ -1,4 +1,3 @@
-
 import json
 import re
 
@@ -35,9 +34,9 @@ NETWORK_KEYWORDS = [
     "dns",
     "ping",
     "router",
-    "connection",
     "connectivity",
 ]
+
 
 PERFORMANCE_KEYWORDS = [
     "slow",
@@ -53,7 +52,23 @@ PERFORMANCE_KEYWORDS = [
 ]
 
 
-# Informational queries should not automatically trigger diagnostics.
+DEVICE_KEYWORDS = [
+    "bluetooth",
+    "headphone",
+    "headphones",
+    "earphone",
+    "earphones",
+    "earbuds",
+    "mouse",
+    "keyboard",
+    "speaker",
+    "printer",
+    "usb",
+    "webcam",
+    "device",
+]
+
+
 INFORMATIONAL_PHRASES = [
     "network security",
     "improve my network",
@@ -79,14 +94,14 @@ def _format_history(conversation_history):
         content = message.get("content", "")
 
         if content:
-            history_parts.append(f"{role}: {content}")
+            history_parts.append(
+                f"{role}: {content}"
+            )
 
     return "\n".join(history_parts) or "No previous conversation."
 
 
 def _is_short_follow_up(query):
-    """Detect replies that depend strongly on previous context."""
-
     normalized = query.lower().strip()
 
     short_replies = {
@@ -110,9 +125,81 @@ def _is_short_follow_up(query):
     return normalized in short_replies
 
 
-def _is_informational_query(query):
-    """Identify common informational questions about IT topics."""
+def _has_previous_assistant_question(conversation_history):
+    if not conversation_history:
+        return False
 
+    for message in reversed(conversation_history):
+
+        role = message.get("role")
+        content = str(
+            message.get("content", "")
+        ).strip()
+
+        if not content:
+            continue
+
+        if role == "assistant":
+            return "?" in content
+
+        if role == "user":
+            continue
+
+    return False
+
+
+def _is_contextual_follow_up(
+    query,
+    conversation_history=None,
+):
+    if not conversation_history:
+        return False
+
+    if _is_short_follow_up(query):
+        return True
+
+    if not _has_previous_assistant_question(
+        conversation_history
+    ):
+        return False
+
+    normalized = query.lower().strip()
+
+    contextual_patterns = [
+        r"^it was\b",
+        r"^they were\b",
+        r"^they are\b",
+        r"^it is\b",
+        r"^it was purchased\b",
+        r"^they were purchased\b",
+        r"^purchased in\b",
+        r"^bought in\b",
+        r"^i haven't\b",
+        r"^i have not\b",
+        r"^i did\b",
+        r"^i didn't\b",
+        r"^i did not\b",
+        r"^i don't\b",
+        r"^i do not\b",
+        r"^not recently\b",
+        r"^recently\b",
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in contextual_patterns
+    ):
+        return True
+
+    word_count = len(normalized.split())
+
+    if word_count <= 10:
+        return True
+
+    return False
+
+
+def _is_informational_query(query):
     normalized = re.sub(
         r"\s+",
         " ",
@@ -125,23 +212,62 @@ def _is_informational_query(query):
     )
 
 
-def _keyword_route(query):
-    """
-    Detect a known diagnostic category.
+def _is_device_problem(query):
+    normalized = query.lower()
 
-    Returns a diagnostic action or None.
-    Informational questions are not automatically routed
-    to live diagnostics.
+    return any(
+        keyword in normalized
+        for keyword in DEVICE_KEYWORDS
+    )
+
+
+def _history_contains_keyword(
+    conversation_history,
+    keywords,
+):
+    if not conversation_history:
+        return False
+
+    history_text = " ".join(
+        str(message.get("content", ""))
+        for message in conversation_history
+    ).lower()
+
+    return any(
+        keyword in history_text
+        for keyword in keywords
+    )
+
+
+def _keyword_route(
+    query,
+    conversation_history=None,
+):
+    """
+    Detect a diagnostic category using both the current
+    message and relevant conversation history.
     """
 
     if _is_informational_query(query):
         return None
 
+    # Current device problems must remain RAG.
+    if _is_device_problem(query):
+        return None
+
     words = set(
-        re.findall(r"\b[a-z0-9-]+\b", query.lower())
+        re.findall(
+            r"\b[a-z0-9-]+\b",
+            query.lower(),
+        )
     )
 
-    # Require stronger evidence of a current network problem.
+    query_lower = query.lower()
+
+    # --------------------------------------------------------
+    # NETWORK
+    # --------------------------------------------------------
+
     network_problem_indicators = {
         "not working",
         "doesn't work",
@@ -159,9 +285,12 @@ def _keyword_route(query):
         "won't connect",
         "wont connect",
         "unable to connect",
+        "still won't connect",
+        "still wont connect",
+        "still can't connect",
+        "still cant connect",
+        "still cannot connect",
     }
-
-    query_lower = query.lower()
 
     has_network_keyword = any(
         keyword in words
@@ -173,10 +302,32 @@ def _keyword_route(query):
         for indicator in network_problem_indicators
     )
 
-    if has_network_keyword and has_network_problem:
+    history_has_network_context = (
+        _history_contains_keyword(
+            conversation_history,
+            NETWORK_KEYWORDS,
+        )
+    )
+
+    if (
+        has_network_keyword
+        and has_network_problem
+    ):
         return "network_diagnostics"
 
-    # Performance diagnostics require a performance keyword.
+    # If the current message clearly says that the
+    # connection is still failing, previous network
+    # context is enough to continue diagnostics.
+    if (
+        has_network_problem
+        and history_has_network_context
+    ):
+        return "network_diagnostics"
+
+    # --------------------------------------------------------
+    # PERFORMANCE
+    # --------------------------------------------------------
+
     performance_problem_indicators = {
         "slow",
         "lag",
@@ -203,22 +354,43 @@ def _keyword_route(query):
         for indicator in performance_problem_indicators
     )
 
-    if has_performance_keyword and has_performance_problem:
+    history_has_performance_context = (
+        _history_contains_keyword(
+            conversation_history,
+            PERFORMANCE_KEYWORDS,
+        )
+    )
+
+    if (
+        has_performance_keyword
+        and has_performance_problem
+    ):
+        return "performance_diagnostics"
+
+    if (
+        has_performance_problem
+        and history_has_performance_context
+    ):
         return "performance_diagnostics"
 
     return None
 
 
-def _fallback_decision(query, conversation_history=None):
-    """Provide a deterministic fallback if the agent fails."""
-
-    keyword_route = _keyword_route(query)
+def _fallback_decision(
+    query,
+    conversation_history=None,
+):
+    keyword_route = _keyword_route(
+        query,
+        conversation_history,
+    )
 
     if keyword_route == "network_diagnostics":
         return {
             "action": "network_diagnostics",
             "reason": (
-                "The current problem appears to be network related."
+                "The current problem appears to be "
+                "a network connectivity issue."
             ),
             "question": "",
         }
@@ -233,12 +405,15 @@ def _fallback_decision(query, conversation_history=None):
             "question": "",
         }
 
-    if _is_short_follow_up(query) and conversation_history:
+    if _is_contextual_follow_up(
+        query,
+        conversation_history,
+    ):
         return {
             "action": "rag",
             "reason": (
-                "The latest message depends on the previous "
-                "troubleshooting conversation."
+                "The latest message appears to answer "
+                "the previous troubleshooting question."
             ),
             "question": "",
         }
@@ -259,54 +434,84 @@ def _validate_current_problem_route(
     conversation_history=None,
 ):
     """
-    Correct a RAG decision when the current message clearly
-    describes a network or performance problem.
+    Validate the LLM decision against deterministic
+    routing rules.
     """
-
-    if _is_short_follow_up(query):
-        return decision
 
     if _is_informational_query(query):
         return decision
 
-    keyword_route = _keyword_route(query)
+    # Bluetooth and peripheral problems should use RAG.
+    if _is_device_problem(query):
+        return {
+            "action": "rag",
+            "reason": (
+                "The current problem involves a device or "
+                "peripheral that is not covered by the "
+                "available live network diagnostics."
+            ),
+            "question": "",
+        }
 
-    if keyword_route is None:
-        return decision
+    keyword_route = _keyword_route(
+        query,
+        conversation_history,
+    )
 
-    if decision.get("action") == "rag":
-        if keyword_route == "network_diagnostics":
-            return {
-                "action": "network_diagnostics",
-                "reason": (
-                    "The current message describes a network "
-                    "problem, so live network diagnostics "
-                    "are appropriate."
-                ),
-                "question": "",
-            }
+    # A clear current network problem takes priority.
+    if keyword_route == "network_diagnostics":
+        return {
+            "action": "network_diagnostics",
+            "reason": (
+                "The current message describes or continues "
+                "a network connectivity problem, so live "
+                "network diagnostics are appropriate."
+            ),
+            "question": "",
+        }
 
-        if keyword_route == "performance_diagnostics":
-            return {
-                "action": "performance_diagnostics",
-                "reason": (
-                    "The current message describes a performance "
-                    "problem, so live performance diagnostics "
-                    "are appropriate."
-                ),
-                "question": "",
-            }
+    # A clear current performance problem takes priority.
+    if keyword_route == "performance_diagnostics":
+        return {
+            "action": "performance_diagnostics",
+            "reason": (
+                "The current message describes or continues "
+                "a performance problem, so live performance "
+                "diagnostics are appropriate."
+            ),
+            "question": "",
+        }
+
+    # Contextual replies that do not describe a diagnostic
+    # failure should continue through RAG.
+    if _is_contextual_follow_up(
+        query,
+        conversation_history,
+    ):
+        return {
+            "action": "rag",
+            "reason": (
+                "The current message appears to answer "
+                "the previous troubleshooting question."
+            ),
+            "question": "",
+        }
 
     return decision
 
 
-def decide_action(query, conversation_history=None):
+def decide_action(
+    query,
+    conversation_history=None,
+):
     """
     Ask the local LLM to choose the best action for the
     user's current IT problem.
     """
 
-    history_text = _format_history(conversation_history)
+    history_text = _format_history(
+        conversation_history
+    )
 
     prompt = f"""
 You are the decision-making agent of an AI IT Support Assistant.
@@ -331,7 +536,7 @@ Available actions:
    Run live disk-space and memory checks for computer slowness,
    freezing, RAM problems, or storage-related performance issues.
 
-Decision rules:
+Important routing rules:
 
 - Prioritize the latest explicit user message.
 - Use conversation history to understand contextual replies.
@@ -339,20 +544,32 @@ Decision rules:
 - Distinguish asking for information from reporting a live failure.
 - Questions about security concepts, best practices, or how
   to improve a system should normally use RAG.
-- Prefer diagnostics when the user reports a current failure
-  that the available checks can investigate.
+- Bluetooth, headphones, earbuds, keyboards, mice, printers,
+  USB devices, webcams, and other peripheral/device problems
+  should use RAG unless a dedicated diagnostic action exists.
+- Do NOT classify Bluetooth problems as network diagnostics.
+- The available network diagnostics only test ping and DNS.
+- The available performance diagnostics only test disk space
+  and memory.
+- Prefer diagnostics only when the available checks can
+  actually investigate the reported failure.
 - Do not invent diagnostic results.
+- If the user is answering the assistant's previous question,
+  continue the existing troubleshooting conversation.
 - If choosing follow_up, provide one relevant, non-empty question.
 - Return valid JSON matching the supplied schema.
 
 Previous conversation:
+
 {history_text}
 
 CURRENT user message:
+
 {query}
 """
 
     try:
+
         response = ollama.chat(
             model=AGENT_MODEL,
             messages=[
@@ -365,6 +582,7 @@ CURRENT user message:
         )
 
         content = response["message"]["content"]
+
         decision = json.loads(content)
 
         valid_actions = {
@@ -389,6 +607,7 @@ CURRENT user message:
         ).strip()
 
         if decision["action"] == "follow_up":
+
             if not decision["question"]:
                 decision["question"] = (
                     "Could you describe the problem "
@@ -417,7 +636,9 @@ CURRENT user message:
 
 
 if __name__ == "__main__":
+
     query = "My Wi-Fi is not working"
+
     decision = decide_action(query)
 
     print("User problem:")
@@ -425,4 +646,3 @@ if __name__ == "__main__":
 
     print("\nAgent decision:")
     print(decision)
-

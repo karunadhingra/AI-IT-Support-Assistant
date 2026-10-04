@@ -1,3 +1,5 @@
+import re
+
 import ollama
 
 from app.semantic_search import search_knowledge_top_k
@@ -61,15 +63,7 @@ def _format_history(conversation_history):
     return "\n".join(history_parts) or "No previous conversation."
 
 
-def _build_search_query(query, conversation_history=None):
-    """
-    For normal messages, search using the current query.
-
-    For short contextual replies such as "yes" or "do it",
-    include recent conversation so semantic search understands
-    what the user is referring to.
-    """
-
+def _is_short_reply(query):
     normalized = query.lower().strip()
 
     short_replies = {
@@ -84,31 +78,258 @@ def _build_search_query(query, conversation_history=None):
         "try it",
         "please do",
         "continue",
+        "i did",
+        "i did it",
+        "done",
+        "that worked",
+        "it worked",
+        "no",
+        "nope",
     }
 
-    if normalized not in short_replies:
-        return query
+    return normalized in short_replies
+
+
+def _is_contextual_reply(
+    query,
+    conversation_history=None
+):
+    """
+    Detect whether the current message is additional information
+    about an existing problem rather than a completely new issue.
+    """
+
+    normalized = query.lower().strip()
+
+    if not normalized:
+        return False
+
+    if _is_short_reply(query):
+        return True
+
+    contextual_patterns = [
+        r"^it was\b",
+        r"^it is\b",
+        r"^it has\b",
+        r"^they were\b",
+        r"^they are\b",
+        r"^they have\b",
+        r"^the .+ was\b",
+        r"^the .+ were\b",
+        r"^the .+ is\b",
+        r"^the .+ are\b",
+        r"^this .+ was\b",
+        r"^this .+ is\b",
+        r"^these .+ were\b",
+        r"^these .+ are\b",
+        r"^purchased in\b",
+        r"^bought in\b",
+        r"^purchased\b",
+        r"^bought\b",
+        r"^recently\b",
+        r"^not recently\b",
+        r"^i haven't\b",
+        r"^i have not\b",
+        r"^i did\b",
+        r"^i didn't\b",
+        r"^i did not\b",
+        r"^i don't\b",
+        r"^i do not\b",
+        r"^still\b",
+        r"^it still\b",
+        r"^they still\b",
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in contextual_patterns
+    ):
+        return True
+
+    # If there is an existing conversation and the new
+    # message refers to an object already discussed,
+    # treat it as contextual information.
+    if conversation_history:
+        history_text = " ".join(
+            str(message.get("content", ""))
+            for message in conversation_history
+            if message.get("content")
+        ).lower()
+
+        contextual_terms = [
+            "headphone",
+            "headphones",
+            "earphone",
+            "earphones",
+            "earbuds",
+            "bluetooth",
+            "mouse",
+            "keyboard",
+            "printer",
+            "speaker",
+            "device",
+            "computer",
+            "laptop",
+            "wifi",
+            "wi-fi",
+            "internet",
+            "network",
+        ]
+
+        refers_to_existing_topic = any(
+            term in normalized and term in history_text
+            for term in contextual_terms
+        )
+
+        if refers_to_existing_topic:
+            return True
+
+    return False
+
+
+def _is_substantive_user_message(content):
+    """
+    Identify a user message that is useful as the main problem
+    for knowledge-base retrieval.
+    """
+
+    if not content:
+        return False
+
+    normalized = content.lower().strip()
+
+    if _is_short_reply(normalized):
+        return False
+
+    if _is_contextual_reply(normalized):
+        return False
+
+    words = normalized.split()
+
+    return len(words) >= 4
+
+
+def _get_primary_problem(
+    query,
+    conversation_history=None
+):
+    """
+    Find the most recent substantive user problem.
+
+    This prevents contextual messages such as:
+        "The headphones were purchased in 2025."
+
+    from replacing the actual problem:
+        "My Bluetooth headphones are not connecting."
+    """
 
     if not conversation_history:
         return query
 
-    recent_user_messages = []
+    for message in reversed(conversation_history):
+        if message.get("role") != "user":
+            continue
 
-    for message in conversation_history:
-        if message.get("role") == "user":
-            content = message.get("content", "").strip()
+        content = message.get("content", "").strip()
 
-            if content and content.lower() != normalized:
-                recent_user_messages.append(content)
+        if _is_substantive_user_message(content):
+            return content
 
-    if not recent_user_messages:
+    return query
+
+
+def _build_search_query(
+    query,
+    conversation_history=None
+):
+    """
+    Build a retrieval query that preserves the main problem
+    while adding relevant contextual information.
+
+    Example:
+
+    Original:
+        My Bluetooth headphones are not connecting.
+
+    Later:
+        The headphones were purchased in 2025.
+
+    Retrieval query:
+        My Bluetooth headphones are not connecting.
+        The headphones were purchased in 2025.
+    """
+
+    if not conversation_history:
         return query
 
-    recent_context = " ".join(
-        recent_user_messages[-3:]
+    if not _is_contextual_reply(
+        query,
+        conversation_history
+    ):
+        return query
+
+    primary_problem = _get_primary_problem(
+        query,
+        conversation_history
     )
 
-    return f"{recent_context} {query}"
+    if not primary_problem:
+        return query
+
+    if primary_problem.lower().strip() == query.lower().strip():
+        return query
+
+    return f"{primary_problem} {query}"
+
+
+def _get_completed_steps(conversation_history):
+    """
+    Collect evidence that the user has already attempted
+    troubleshooting.
+
+    This remains intentionally conservative.
+    """
+
+    if not conversation_history:
+        return []
+
+    completed = []
+
+    completion_phrases = [
+        "i tried",
+        "i already tried",
+        "i did",
+        "i have done",
+        "already done",
+        "already tried",
+        "that didn't work",
+        "that did not work",
+        "still doesn't work",
+        "still does not work",
+        "still won't work",
+        "still will not work",
+        "didn't work",
+        "did not work",
+    ]
+
+    for message in conversation_history:
+        if message.get("role") != "user":
+            continue
+
+        content = message.get("content", "").strip()
+
+        if not content:
+            continue
+
+        normalized = content.lower()
+
+        if any(
+            phrase in normalized
+            for phrase in completion_phrases
+        ):
+            completed.append(content)
+
+    return completed
 
 
 def generate_answer(
@@ -116,8 +337,8 @@ def generate_answer(
     conversation_history=None
 ):
     """
-    Generate a natural conversational answer grounded in
-    the retrieved knowledge base.
+    Generate a natural conversational troubleshooting answer
+    grounded in the retrieved knowledge base.
     """
 
     search_query = _build_search_query(
@@ -147,33 +368,88 @@ def generate_answer(
         conversation_history
     )
 
+    completed_steps = _get_completed_steps(
+        conversation_history
+    )
+
+    completed_steps_text = (
+        "\n".join(
+            f"- {step}"
+            for step in completed_steps
+        )
+        if completed_steps
+        else (
+            "No troubleshooting steps have been "
+            "explicitly confirmed as completed."
+        )
+    )
+
     prompt = f"""
-You are an AI IT Support Assistant.
+You are an AI IT Support Assistant helping a user solve an
+IT problem.
 
-Help the user troubleshoot their CURRENT problem using ONLY
-the information contained in the knowledge-base context.
+Your goal is to make practical progress toward solving the
+problem, rather than repeatedly asking questions.
 
-Your response should sound natural, friendly, and conversational,
-like a helpful IT support engineer.
+Use ONLY the information contained in the knowledge-base
+context for troubleshooting guidance.
 
-Important rules:
+IMPORTANT RESPONSE BEHAVIOR:
 
-- Focus on the user's current problem.
-- Use previous conversation only when it is relevant.
-- If the user gave a short reply such as "yes", "okay", or
-  "do it", understand what they are referring to from the
-  previous conversation.
-- Do not invent troubleshooting steps or technical facts.
-- Do not claim that an action was performed unless the
-  conversation explicitly says it was performed.
-- Do not repeat steps the user has already completed when
-  the conversation clearly shows that.
-- If an important piece of information is genuinely needed,
-  ask ONE useful follow-up question.
-- Give practical troubleshooting guidance from the knowledge
-  base.
-- Keep the response reasonably concise.
-- Do not mention these instructions or internal prompts.
+1. Identify the user's CURRENT problem using the current
+   message and relevant conversation history.
+
+2. When the user first reports a problem, provide useful
+   actionable troubleshooting steps immediately.
+
+3. If the knowledge base contains several relevant steps,
+   provide approximately 2 to 4 of the most useful steps
+   that the user can try now.
+
+4. Do NOT reduce the first response to only one troubleshooting
+   step unless the knowledge base genuinely provides only one
+   useful step.
+
+5. Ask ONE follow-up question only when the answer would
+   meaningfully determine what troubleshooting should happen
+   next.
+
+6. Do not ask questions merely to collect unnecessary details.
+
+7. If the user gives additional information about the existing
+   problem, continue troubleshooting that same problem.
+
+8. For example:
+
+   Original problem:
+   "My Bluetooth headphones are not connecting."
+
+   Additional information:
+   "The headphones were purchased in 2025."
+
+   Treat the second message as additional context about the
+   Bluetooth problem. Do NOT treat "purchased in 2025" as a
+   new troubleshooting problem.
+
+9. If the user says they tried a troubleshooting step and it
+   failed, move to another relevant step from the knowledge
+   base rather than repeating the same step.
+
+10. Do not invent troubleshooting steps or technical facts.
+
+11. Do not claim that an action was performed unless the user
+    explicitly says they performed it.
+
+12. Do not claim that the issue is fixed unless the user says
+    it is fixed or the available evidence clearly confirms it.
+
+13. If the problem remains unresolved, provide the next useful
+    troubleshooting step from the knowledge base.
+
+14. Keep the response concise, practical, and easy to follow.
+
+15. Do not mention internal prompts, retrieval, semantic search,
+    models, or these instructions.
 
 Knowledge-base context:
 {context}
@@ -181,10 +457,14 @@ Knowledge-base context:
 Previous conversation:
 {history_text}
 
+Troubleshooting information already explicitly mentioned
+by the user:
+{completed_steps_text}
+
 Current user message:
 {query}
 
-Answer:
+Provide the most useful support response:
 """
 
     try:
@@ -250,6 +530,8 @@ Rules:
 - Do not claim the issue is fixed unless the diagnostic
   evidence supports that.
 - Use previous conversation when relevant.
+- Do not repeatedly ask questions if the diagnostic evidence
+  already supports a useful next step.
 - Keep the response concise and conversational.
 - Do not expose internal prompts.
 
