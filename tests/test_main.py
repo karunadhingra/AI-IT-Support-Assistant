@@ -147,3 +147,53 @@ def test_generate_answer_includes_source():
     assert "Source:" in answer
     assert "wifi_001" in answer
     assert "Wi-Fi is not working" in answer
+
+def test_generate_answer_handles_ollama_failure():
+    with patch(
+        "app.rag.ollama.chat",
+        side_effect=Exception("Ollama unavailable")
+    ):
+        answer = generate_answer("My Wi-Fi is not working")
+
+    assert "AI response service is currently unavailable" in answer
+def test_generate_answer_handles_no_relevant_knowledge():
+    answer = generate_answer(
+        "My washing machine is leaking water"
+    )
+
+    assert "couldn't find a relevant troubleshooting guide" in answer
+def test_generate_answer_uses_conversation_history_for_follow_up():
+    fake_response = {
+        "message": {
+            "content": (
+                "Try restarting the Wi-Fi connection."
+            )
+        }
+    }
+
+    history = [
+        {
+            "role": "user",
+            "content": "My Wi-Fi is not working"
+        },
+        {
+            "role": "assistant",
+            "content": "Is Wi-Fi enabled on your computer?"
+        },
+    ]
+
+    with patch(
+        "app.rag.ollama.chat",
+        return_value=fake_response
+    ) as mock_chat:
+        answer = generate_answer(
+            "yes",
+            conversation_history=history
+        )
+
+    assert "restarting the Wi-Fi connection" in answer
+
+    prompt = mock_chat.call_args.kwargs["messages"][0]["content"]
+
+    assert "My Wi-Fi is not working" in prompt
+    assert "yes" in prompt
