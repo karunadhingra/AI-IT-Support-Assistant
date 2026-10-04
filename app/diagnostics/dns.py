@@ -1,3 +1,4 @@
+
 import socket
 
 
@@ -8,19 +9,22 @@ def dns_lookup(host):
         return {
             "host": host,
             "success": True,
-            "address": address
+            "address": address,
+            "error": None,
         }
 
-    except socket.gaierror:
+    except socket.gaierror as exc:
         return {
             "host": host,
             "success": False,
-            "address": None
+            "address": None,
+            "error": str(exc),
         }
 
-    except OSError:
+    except OSError as exc:
         return {
             "host": host,
             "success": False,
-            "address": None
+            "address": None,
+            "error": str(exc),
         }

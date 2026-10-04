@@ -346,72 +346,88 @@ def format_diagnostic_points(
     raw_answer,
     diagnostics,
 ):
-    """Turns diagnostic data into simple, readable bullet points."""
+    """Summarize diagnostic results accurately."""
 
     points = []
 
     if "ping" in diagnostics:
+        ping = diagnostics["ping"]
+        success = ping.get("success")
 
-        success = diagnostics["ping"].get(
-            "success"
-        )
-
-        points.append(
-            "- **Internet connection:** Working properly."
-            if success
-            else
-            "- **Internet connection:** Offline or unreachable."
-        )
+        if success is True:
+            points.append(
+                "- **Ping test:** Host 8.8.8.8 responded successfully."
+            )
+        elif success is False:
+            points.append(
+                "- **Ping test:** Host 8.8.8.8 did not respond successfully. "
+                "This alone does not prove the device is offline."
+            )
+        else:
+            points.append(
+                "- **Ping test:** Result unavailable."
+            )
 
     if "dns" in diagnostics:
+        dns = diagnostics["dns"]
+        success = dns.get("success")
+        host = dns.get("host", "requested hostname")
 
-        success = diagnostics["dns"].get(
-            "success"
-        )
-
-        points.append(
-            "- **Web routing (DNS):** Working fine."
-            if success
-            else
-            "- **Web routing (DNS):** Failing to find web addresses."
-        )
+        if success is True:
+            address = dns.get("address")
+            detail = (
+                f" Resolved address: {address}."
+                if address
+                else ""
+            )
+            points.append(
+                f"- **DNS lookup:** {host} resolved successfully."
+                f"{detail}"
+            )
+        elif success is False:
+            error = dns.get("error")
+            detail = f" Error: {error}" if error else ""
+            points.append(
+                f"- **DNS lookup:** Resolving {host} failed."
+                f"{detail}"
+            )
+        else:
+            points.append(
+                f"- **DNS lookup:** Result unavailable for {host}."
+            )
 
     if "disk" in diagnostics:
-
-        free_gb = diagnostics["disk"].get(
-            "free_gb"
-        )
+        free_gb = diagnostics["disk"].get("free_gb")
 
         if free_gb is not None:
-
             points.append(
                 f"- **Available disk space:** "
                 f"{free_gb:.1f} GB remaining."
             )
+        else:
+            points.append(
+                "- **Available disk space:** Result unavailable."
+            )
 
     if "memory" in diagnostics:
-
-        used_percent = diagnostics["memory"].get(
-            "used_percent"
-        )
+        used_percent = diagnostics["memory"].get("used_percent")
 
         if used_percent is not None:
-
             points.append(
                 f"- **Memory (RAM) usage:** "
                 f"{used_percent:.1f}% currently in use."
+            )
+        else:
+            points.append(
+                "- **Memory (RAM) usage:** Result unavailable."
             )
 
     formatted = ""
 
     if raw_answer:
-
-        formatted += (
-            f"{raw_answer}\n\n"
-        )
+        formatted += f"{raw_answer}\n\n"
 
     if points:
-
         formatted += (
             "**Here is what I checked:**\n"
             + "\n".join(points)
