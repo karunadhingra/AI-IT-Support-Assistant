@@ -41,6 +41,7 @@ NETWORK_KEYWORDS = [
 PERFORMANCE_KEYWORDS = [
     "slow",
     "lag",
+    "lagging",
     "memory",
     "ram",
     "disk",
@@ -48,7 +49,14 @@ PERFORMANCE_KEYWORDS = [
     "space",
     "freezing",
     "freeze",
+    "frozen",
     "performance",
+    "process",
+    "processes",
+    "application",
+    "applications",
+    "background",
+    "cpu",
 ]
 
 
@@ -125,45 +133,130 @@ def _is_short_follow_up(query):
     return normalized in short_replies
 
 
-def _has_previous_assistant_question(conversation_history):
-    if not conversation_history:
+def _is_process_state_reply(query):
+    """
+    Detect replies where the user is simply telling the assistant
+    whether a previously recommended application/process can be
+    closed.
+
+    These messages should NOT trigger another full performance
+    diagnostic by themselves.
+    """
+
+    normalized = re.sub(
+        r"\s+",
+        " ",
+        query.lower().strip(),
+    )
+
+    if not normalized:
         return False
 
-    for message in reversed(conversation_history):
+    state_replies = {
+        "i need it",
+        "i need that",
+        "i need this",
+        "need it",
+        "need that",
+        "need this",
+        "i still need it",
+        "i still need that",
+        "i still need this",
+        "i want it",
+        "i still want it",
+        "i need that also",
+        "i need this also",
+        "i need it also",
+        "i want that",
+        "i want this",
+        "i can't close it",
+        "i cannot close it",
+        "can't close it",
+        "cannot close it",
+        "i don't want to close it",
+        "i do not want to close it",
+        "i need to keep it open",
+        "i need to keep this open",
+        "i need to keep that open",
+        "keep it open",
+        "keep that open",
+        "keep this open",
+        "not now",
+        "not yet",
+    }
 
-        role = message.get("role")
-        content = str(
-            message.get("content", "")
-        ).strip()
+    if normalized in state_replies:
+        return True
 
-        if not content:
-            continue
+    state_patterns = [
+        r"^i need (it|that|this|the application)\b",
+        r"^i still need (it|that|this|the application)\b",
+        r"^i want (it|that|this)\b",
+        r"^i still want (it|that|this)\b",
+        r"^i can't close (it|that|this)\b",
+        r"^i cannot close (it|that|this)\b",
+        r"^i don't want to close (it|that|this)\b",
+        r"^i do not want to close (it|that|this)\b",
+        r"^i need to keep (it|that|this) open\b",
+        r"^keep (it|that|this) open\b",
+    ]
 
-        if role == "assistant":
-            return "?" in content
-
-        if role == "user":
-            continue
-
-    return False
+    return any(
+        re.search(pattern, normalized)
+        for pattern in state_patterns
+    )
 
 
 def _is_contextual_follow_up(
     query,
     conversation_history=None,
 ):
+    """
+    Detect whether the current message is a response to
+    the previous troubleshooting conversation rather than
+    a completely new IT problem.
+    """
+
     if not conversation_history:
         return False
+
+    normalized = query.lower().strip()
+
+    if not normalized:
+        return False
+
+    if _is_process_state_reply(query):
+        return True
 
     if _is_short_follow_up(query):
         return True
 
-    if not _has_previous_assistant_question(
-        conversation_history
-    ):
-        return False
+    action_response_patterns = [
+        r"^i need\b",
+        r"^i still need\b",
+        r"^i want\b",
+        r"^i still want\b",
+        r"^i can't\b",
+        r"^i cannot\b",
+        r"^i don't want\b",
+        r"^i do not want\b",
+        r"^i already\b",
+        r"^i did\b",
+        r"^i didn't\b",
+        r"^i did not\b",
+        r"^i haven't\b",
+        r"^i have not\b",
+        r"^not yet\b",
+        r"^not now\b",
+        r"^still\b",
+        r"^already\b",
+    ]
 
-    normalized = query.lower().strip()
+    if any(
+        re.search(pattern, normalized)
+        for pattern in action_response_patterns
+    ):
+        return True
 
     contextual_patterns = [
         r"^it was\b",
@@ -239,6 +332,52 @@ def _history_contains_keyword(
     )
 
 
+def _get_recent_context_route(
+    conversation_history,
+):
+    """
+    Determine the most relevant diagnostic category from
+    the recent troubleshooting conversation.
+
+    This is used only when the current message actually
+    requires continuing diagnostics.
+
+    Simple process-state replies such as "I need it" are
+    handled separately and must not automatically trigger
+    another diagnostic run.
+    """
+
+    if not conversation_history:
+        return None
+
+    recent_messages = conversation_history[-8:]
+
+    recent_text = " ".join(
+        str(message.get("content", ""))
+        for message in recent_messages
+        if message.get("content")
+    ).lower()
+
+    performance_score = 0
+    network_score = 0
+
+    for keyword in PERFORMANCE_KEYWORDS:
+        if keyword in recent_text:
+            performance_score += 1
+
+    for keyword in NETWORK_KEYWORDS:
+        if keyword in recent_text:
+            network_score += 1
+
+    if performance_score > network_score:
+        return "performance_diagnostics"
+
+    if network_score > performance_score:
+        return "network_diagnostics"
+
+    return None
+
+
 def _keyword_route(
     query,
     conversation_history=None,
@@ -251,7 +390,6 @@ def _keyword_route(
     if _is_informational_query(query):
         return None
 
-    # Current device problems must remain RAG.
     if _is_device_problem(query):
         return None
 
@@ -315,9 +453,6 @@ def _keyword_route(
     ):
         return "network_diagnostics"
 
-    # If the current message clearly says that the
-    # connection is still failing, previous network
-    # context is enough to continue diagnostics.
     if (
         has_network_problem
         and history_has_network_context
@@ -342,6 +477,10 @@ def _keyword_route(
         "low disk space",
         "disk full",
         "running out of space",
+        "performance issue",
+        "performance problem",
+        "computer is slow",
+        "computer is running slowly",
     }
 
     has_performance_keyword = any(
@@ -380,6 +519,27 @@ def _fallback_decision(
     query,
     conversation_history=None,
 ):
+    """
+    Deterministic fallback when the LLM cannot make a
+    valid decision.
+    """
+
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Process-state replies are NOT new diagnostic requests.
+    # --------------------------------------------------------
+
+    if _is_process_state_reply(query):
+        return {
+            "action": "rag",
+            "reason": (
+                "The user is responding to a previous process "
+                "recommendation and does not appear to be "
+                "reporting a new performance problem."
+            ),
+            "question": "",
+        }
+
     keyword_route = _keyword_route(
         query,
         conversation_history,
@@ -409,11 +569,39 @@ def _fallback_decision(
         query,
         conversation_history,
     ):
+        contextual_route = _get_recent_context_route(
+            conversation_history
+        )
+
+        if contextual_route == "performance_diagnostics":
+            return {
+                "action": "rag",
+                "reason": (
+                    "The latest message is a contextual response "
+                    "to the ongoing troubleshooting conversation, "
+                    "but it does not itself report a new performance "
+                    "failure."
+                ),
+                "question": "",
+            }
+
+        if contextual_route == "network_diagnostics":
+            return {
+                "action": "rag",
+                "reason": (
+                    "The latest message is a contextual response "
+                    "to the ongoing troubleshooting conversation, "
+                    "but it does not itself report a new network "
+                    "failure."
+                ),
+                "question": "",
+            }
+
         return {
             "action": "rag",
             "reason": (
-                "The latest message appears to answer "
-                "the previous troubleshooting question."
+                "The latest message appears to continue "
+                "the previous troubleshooting conversation."
             ),
             "question": "",
         }
@@ -441,7 +629,27 @@ def _validate_current_problem_route(
     if _is_informational_query(query):
         return decision
 
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Process-state replies must NEVER be forced into
+    # performance diagnostics.
+    # --------------------------------------------------------
+
+    if _is_process_state_reply(query):
+        return {
+            "action": "rag",
+            "reason": (
+                "The user is responding to a previous process "
+                "recommendation rather than reporting a new "
+                "performance problem."
+            ),
+            "question": "",
+        }
+
+    # --------------------------------------------------------
     # Bluetooth and peripheral problems should use RAG.
+    # --------------------------------------------------------
+
     if _is_device_problem(query):
         return {
             "action": "rag",
@@ -458,7 +666,10 @@ def _validate_current_problem_route(
         conversation_history,
     )
 
+    # --------------------------------------------------------
     # A clear current network problem takes priority.
+    # --------------------------------------------------------
+
     if keyword_route == "network_diagnostics":
         return {
             "action": "network_diagnostics",
@@ -470,7 +681,10 @@ def _validate_current_problem_route(
             "question": "",
         }
 
+    # --------------------------------------------------------
     # A clear current performance problem takes priority.
+    # --------------------------------------------------------
+
     if keyword_route == "performance_diagnostics":
         return {
             "action": "performance_diagnostics",
@@ -482,8 +696,11 @@ def _validate_current_problem_route(
             "question": "",
         }
 
-    # Contextual replies that do not describe a diagnostic
-    # failure should continue through RAG.
+    # --------------------------------------------------------
+    # Other contextual replies should not automatically
+    # trigger another diagnostic.
+    # --------------------------------------------------------
+
     if _is_contextual_follow_up(
         query,
         conversation_history,
@@ -491,8 +708,9 @@ def _validate_current_problem_route(
         return {
             "action": "rag",
             "reason": (
-                "The current message appears to answer "
-                "the previous troubleshooting question."
+                "The current message appears to continue "
+                "the previous troubleshooting conversation "
+                "without reporting a new diagnostic problem."
             ),
             "question": "",
         }
@@ -508,6 +726,24 @@ def decide_action(
     Ask the local LLM to choose the best action for the
     user's current IT problem.
     """
+
+    # --------------------------------------------------------
+    # Handle process-state replies before calling the LLM.
+    #
+    # This is deliberate. Messages such as "I need it" are
+    # state updates, not diagnostic requests.
+    # --------------------------------------------------------
+
+    if _is_process_state_reply(query):
+        return {
+            "action": "rag",
+            "reason": (
+                "The user is responding to a previous process "
+                "recommendation and does not report a new "
+                "performance failure."
+            ),
+            "question": "",
+        }
 
     history_text = _format_history(
         conversation_history
@@ -533,8 +769,9 @@ Available actions:
    or connectivity problems.
 
 4. performance_diagnostics
-   Run live disk-space and memory checks for computer slowness,
-   freezing, RAM problems, or storage-related performance issues.
+   Run live disk-space, memory, and process checks for
+   computer slowness, freezing, RAM problems, or
+   performance issues.
 
 Important routing rules:
 
@@ -549,15 +786,92 @@ Important routing rules:
   should use RAG unless a dedicated diagnostic action exists.
 - Do NOT classify Bluetooth problems as network diagnostics.
 - The available network diagnostics only test ping and DNS.
-- The available performance diagnostics only test disk space
-  and memory.
+- The available performance diagnostics test disk space,
+  memory, and running processes.
 - Prefer diagnostics only when the available checks can
   actually investigate the reported failure.
 - Do not invent diagnostic results.
-- If the user is answering the assistant's previous question,
-  continue the existing troubleshooting conversation.
-- If choosing follow_up, provide one relevant, non-empty question.
-- Return valid JSON matching the supplied schema.
+
+IMPORTANT PROCESS-STATE RULE:
+
+If the user is simply responding to a previous recommendation
+about closing an application or process, do NOT start another
+full performance diagnostic.
+
+Examples:
+
+Assistant:
+"python.exe is using some RAM. If you do not need it,
+consider closing it."
+
+User:
+"I need it."
+
+Correct action:
+rag
+
+Assistant:
+"Chrome is using some memory. Consider closing it if
+you do not need it."
+
+User:
+"I need that also."
+
+Correct action:
+rag
+
+Other process-state replies include:
+
+- "I need it"
+- "I need that"
+- "I still need it"
+- "I need that also"
+- "I need this also"
+- "I can't close it"
+- "I cannot close it"
+- "I don't want to close it"
+- "I need to keep it open"
+- "not yet"
+- "not now"
+
+These messages are NOT new performance failures.
+
+However, if the user explicitly reports that the computer
+is still slow, lagging, freezing, or having high memory usage,
+then performance_diagnostics is appropriate.
+
+For example:
+
+User:
+"I need Chrome."
+
+This is a process preference, not a performance diagnostic.
+
+User:
+"My computer is still slow even after closing Chrome."
+
+This IS a performance problem and should use
+performance_diagnostics.
+
+For network troubleshooting:
+
+User:
+"I need it."
+
+If this is simply a response to a previous recommendation,
+do not start another network diagnostic.
+
+But:
+
+User:
+"My internet is still not working."
+
+This IS a network problem and should use
+network_diagnostics.
+
+If choosing follow_up, provide one relevant, non-empty question.
+
+Return valid JSON matching the supplied schema.
 
 Previous conversation:
 
@@ -569,7 +883,6 @@ CURRENT user message:
 """
 
     try:
-
         response = ollama.chat(
             model=AGENT_MODEL,
             messages=[
