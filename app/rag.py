@@ -295,7 +295,50 @@ def get_unshown_article_steps(article, conversation_history):
             unshown.append(step)
 
     return unshown, shown
+def generate_how_to_answer(query, conversation_history=None):
+    """
+    Generate clear, beginner-friendly step-by-step instructions when the user
+    asks HOW to perform a previously suggested troubleshooting step.
+    """
+    clean_hist = _clean_history(query, conversation_history)
 
+    last_assistant_message = ""
+    for msg in reversed(clean_hist):
+        if msg.get("role") == "assistant" and msg.get("content"):
+            last_assistant_message = msg["content"]
+            break
+
+    prompt = f"""
+You are a patient, beginner-friendly IT Support Assistant helping a Windows user.
+The user is asking HOW to perform a troubleshooting step that was just suggested to them.
+
+Previously suggested troubleshooting message:
+{last_assistant_message or "General Windows troubleshooting."}
+
+User's question:
+{query}
+
+IMPORTANT RULES:
+1. Do NOT repeat the overall diagnosis or list unrelated troubleshooting steps.
+2. Explain ONLY how to perform the specific action the user is asking about.
+3. Give 3 to 5 clear, numbered, click-by-click steps for Windows (include keyboard shortcuts like Win + I or Ctrl + Shift + Esc where helpful).
+4. End with: "Let me know once you've tried this, or tell me if the original issue is still happening!"
+"""
+
+    try:
+        response = ollama.chat(
+            model=RAG_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response["message"]["content"].strip()
+    except Exception:
+        return (
+            "### How to Perform This Step on Windows\n"
+            "1. Press **`Win + I`** on your keyboard to open **Windows Settings** (or click the **Start** menu button on your taskbar).\n"
+            "2. Use the search bar at the top of Settings to type the name of the setting mentioned in the step.\n"
+            "3. Follow the on-screen toggle or option, then check if your issue improves.\n\n"
+            "Let me know once you've tried this, or if you'd like me to suggest a simpler alternative step!"
+        )
 
 def get_next_troubleshooting_batch(query, conversation_history=None, batch_size=2):
     clean_hist = _clean_history(query, conversation_history)

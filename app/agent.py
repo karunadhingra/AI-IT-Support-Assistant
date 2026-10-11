@@ -57,11 +57,10 @@ def _normalize_query(query):
 
 def _is_vague_problem_statement(query):
     """
-    Deterministically detect vague problem statements like:
+    Detect vague problem statements like:
     - "my computer has a problem"
     - "something is wrong with my laptop"
     - "my pc is not working"
-    - "i need help with my computer"
     that do NOT mention any specific symptom or component.
     """
     normalized = _normalize_query(query)
@@ -165,9 +164,7 @@ def _is_contextual_follow_up(query, conversation_history=None):
         r"^i (still )?(need|want|use|am using|m using)\b",
         r"^i (can't|cannot|don't want to|do not want to) close\b",
         r"^i (already )?(closed|restarted|tried|checked|updated|disabled|disconnected|unplugged)\b",
-        r"^(it|that|this|they) (is|was|are|were|still|didn't|did not|doesn't|does not)\b",
         r"^(the )?(app|application|process|program|device|headphones|speaker|printer|keyboard|mouse|monitor|usb)\b",
-        r"^still (not|the same|having)\b",
         r"^(didn't|did not|doesn't|does not) work\b",
         r"^not comfortable\b",
     ]
@@ -175,31 +172,22 @@ def _is_contextual_follow_up(query, conversation_history=None):
     return any(re.search(pattern, normalized) for pattern in follow_up_patterns)
 
 
-def _has_explicit_network_failure(query):
+def _has_explicit_network_failure(query, conversation_history=None):
     normalized = _normalize_query(query)
 
     if _is_vague_problem_statement(normalized):
         return False
 
-    network_keywords = [
-        "wifi",
-        "wi-fi",
-        "internet",
-        "network",
-        "dns",
-        "website",
-        "websites",
-        "browser",
-        "ethernet",
-        "lan",
-        "connection",
-        "disconnect",
-        "disconnected",
-        "disconnecting",
-        "online",
-    ]
-
-    exclusion_keywords = [
+    # Exclude informational/security questions (e.g., "How can I improve my network security?")
+    non_diagnostic_network_words = [
+        "security",
+        "secure",
+        "password",
+        "encrypt",
+        "encryption",
+        "firewall",
+        "hack",
+        "phishing",
         "bluetooth",
         "headphone",
         "headphones",
@@ -222,24 +210,30 @@ def _has_explicit_network_failure(query):
         "battery",
     ]
 
-    if any(word in normalized for word in exclusion_keywords):
+    if any(word in normalized for word in non_diagnostic_network_words):
         return False
 
-    if any(word in normalized for word in network_keywords):
-        return True
+    if re.search(r"^how (can|do|to) i (improve|set up|configure|change)\b", normalized):
+        return False
 
-    network_patterns = [
+    network_failure_patterns = [
+        r"\b(wifi|wi-fi|internet|network|dns|ethernet|lan)\b.*\b(not working|isn't working|isnt working|won't connect|wont connect|cannot connect|can't connect|down|disconnected|disconnecting|offline|failed|failing|slow|issue|problem)\b",
+        r"\b(not working|isn't working|isnt working|won't connect|wont connect|cannot connect|can't connect|down|disconnected|disconnecting|offline|no)\b.*\b(wifi|wi-fi|internet|network|dns|ethernet|lan)\b",
         r"\bno internet\b",
-        r"\bcannot connect to (the )?(internet|wifi|wi-fi|network)\b",
-        r"\bcan't connect to (the )?(internet|wifi|wi-fi|network)\b",
         r"\bwebsites? (are not|aren't|won't|will not) (loading|opening)\b",
         r"\bpages? (are not|aren't|won't|will not) (loading|opening)\b",
-        r"\binternet is (down|slow|not working|disconnected)\b",
-        r"\bwifi is (down|slow|not working|disconnected)\b",
-        r"\bwi-fi is (down|slow|not working|disconnected)\b",
     ]
 
-    return any(re.search(pattern, normalized) for pattern in network_patterns)
+    if any(re.search(pattern, normalized) for pattern in network_failure_patterns):
+        return True
+
+    # Also check if the user says "It still won't connect" during a Wi-Fi conversation
+    if conversation_history and re.search(r"\b(won't|wont|cannot|can't) connect\b", normalized):
+        history_text = _format_history(conversation_history).lower()
+        if any(w in history_text for w in ["wi-fi", "wifi", "internet", "network"]):
+            return True
+
+    return False
 
 
 def _has_explicit_performance_failure(query):
@@ -287,8 +281,8 @@ def _has_explicit_performance_failure(query):
 
 def _validate_current_problem_route(query, decision, conversation_history=None):
     """
-    Guardrail so deterministic rules prevent misrouting or endless
-    follow-up questions from the small LLM.
+    Validate the LLM decision while preserving unit test behavior and
+    preventing repeated follow-up loops in multi-turn conversations.
     """
     if not isinstance(decision, dict):
         return {
@@ -297,37 +291,9 @@ def _validate_current_problem_route(query, decision, conversation_history=None):
             "question": "",
         }
 
-    # 1. FIRST: Check if the message explicitly describes a Performance or Network issue!
-    # (e.g., "the computer is slow"[cite: 22], "my wifi is not working")
-    if _has_explicit_performance_failure(query):
-        return {
-            "action": "performance_diagnostics",
-            "reason": "The current message explicitly describes a system performance, memory, CPU, or disk issue.",
-            "question": "",
-        }
-
-    if _has_explicit_network_failure(query):
-        return {
-            "action": "network_diagnostics",
-            "reason": "The current message explicitly describes a network or internet connectivity issue.",
-            "question": "",
-        }
-
-    # 2. SECOND: If we are already in an ongoing conversation (conversation_history is not empty),
-    # NEVER allow another `follow_up` question! Route straight to RAG or diagnostics.
-    if conversation_history:
-        return {
-            "action": "rag",
-            "reason": (
-                "The conversation is already in progress; proceeding directly "
-                "to troubleshooting instead of asking another follow-up question."
-            ),
-            "question": "",
-        }
-
-    # 3. THIRD: Only on Turn 1, if the user's message is genuinely vague
-    # (e.g., "my computer has a problem"[cite: 20, 21]), ask ONE clarifying question.
-    if _is_vague_problem_statement(query):
+    # 1. If the user's message is a vague problem statement on Turn 1
+    # (e.g. "my computer has a problem"), always return `follow_up`.
+    if not conversation_history and _is_vague_problem_statement(query):
         question = decision.get("question", "").strip()
         if not question:
             question = (
@@ -341,11 +307,75 @@ def _validate_current_problem_route(query, decision, conversation_history=None):
             "question": question,
         }
 
-    # 4. Allow LLM follow_up on Turn 1 if it provided a valid question
+    # 2. If we are in a multi-turn conversation and the user gives a short process/status reply,
+    # route to RAG so we don't re-run diagnostics unnecessarily.
+    if _is_contextual_follow_up(query, conversation_history):
+        return {
+            "action": "rag",
+            "reason": (
+                "The current message continues the troubleshooting "
+                "conversation without reporting a new diagnostic failure."
+            ),
+            "question": "",
+        }
+
+    # 3. In an ongoing conversation (Turn 2+), if the user now states a clear performance
+    # or network failure (e.g., "the computer is slow" or "It still won't connect"),
+    # run the appropriate diagnostics and do NOT allow another follow_up question!
+    if conversation_history:
+        if _has_explicit_performance_failure(query):
+            return {
+                "action": "performance_diagnostics",
+                "reason": "The user clarified that the system is slow.",
+                "question": "",
+            }
+        if _has_explicit_network_failure(query, conversation_history):
+            return {
+                "action": "network_diagnostics",
+                "reason": "The conversation indicates an active network connectivity failure.",
+                "question": "",
+            }
+        # Never allow a second `follow_up` question when conversation_history already exists
+        if decision.get("action") == "follow_up":
+            return {
+                "action": "rag",
+                "reason": "Proceeding to troubleshooting instead of asking another follow-up question.",
+                "question": "",
+            }
+
+    # 4. On Turn 1 (no conversation_history), allow `follow_up` if the model returned a valid question
     if decision.get("action") == "follow_up" and decision.get("question"):
         return decision
 
-    # 5. Otherwise, go straight to Knowledge Base (RAG) troubleshooting!
+    # 5. Check explicit network or performance failures
+    if _has_explicit_network_failure(query, conversation_history):
+        return {
+            "action": "network_diagnostics",
+            "reason": "The current message explicitly describes a network or internet connectivity issue.",
+            "question": "",
+        }
+
+    if _has_explicit_performance_failure(query):
+        return {
+            "action": "performance_diagnostics",
+            "reason": "The current message explicitly describes a system performance, memory, CPU, or disk issue.",
+            "question": "",
+        }
+
+    if decision.get("action") in {
+        "network_diagnostics",
+        "performance_diagnostics",
+    }:
+        return {
+            "action": "rag",
+            "reason": (
+                "The current message does not explicitly describe a live "
+                "network or system performance issue, so knowledge-base "
+                "troubleshooting is more appropriate."
+            ),
+            "question": "",
+        }
+
     return {
         "action": "rag",
         "reason": decision.get(
@@ -381,7 +411,7 @@ Available actions:
 
 1. "follow_up"
 Choose this ONLY when the user's problem is still too vague to diagnose or
-search effectively (for example: "my computer has a problem"[cite: 20, 21], "something is broken").
+search effectively (for example: "my computer has a problem", "something is broken").
 If you choose "follow_up", provide ONE short, specific clarifying question.
 
 2. "rag"

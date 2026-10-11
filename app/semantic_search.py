@@ -5,7 +5,7 @@ from app.embeddings import model
 from app.knowledge import KNOWLEDGE_PATH, load_knowledge_base
 
 
-SIMILARITY_THRESHOLD = 0.5
+SIMILARITY_THRESHOLD = 0.35
 
 _CACHED_MTIME = None
 _CACHED_KNOWLEDGE = None

@@ -5,6 +5,7 @@ from app.rag import (
     _get_primary_problem,
     generate_answer,
     generate_diagnostic_answer,
+    generate_how_to_answer,
     get_next_troubleshooting_batch,
 )
 from app.diagnostics.network import ping_host
@@ -338,37 +339,87 @@ def _count_step_batches_shown(conversation_history):
 
 
 def _get_original_issue(query, conversation_history):
-    """
-    Use `_get_primary_problem` (which scans backwards from the latest message)
-    so if the user starts a new topic in the same chat, we always track
-    the MOST RECENT substantive problem rather than message #1!
-    """
     return _get_primary_problem(query, conversation_history)
 
 
 def _is_how_to_or_clarification_question(query):
-    """
-    Detect when the user is asking HOW to perform a suggested step
-    (e.g., "how to disable startup applications", "where is that setting?").
-    """
-    normalized = re.sub(r"\s+", " ", str(query).lower().strip())
+    normalized = re.sub(r"[^\w\s'-]", " ", str(query).lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
     how_to_patterns = [
-        r"^how (to|do i|can i)\b",
-        r"^where (is|do i|can i)\b",
-        r"^what (is|does|are)\b",
-        r"^can you (explain|show|tell me how)\b",
-        r"\bhow to\b",
-        r"\bsteps to\b",
+        r"\bhow (to|do i|can i|should i|would i)\b",
+        r"\bwhere (is|do i|can i|should i|to find)\b",
+        r"\bwhat (is|does|are|do you mean)\b",
+        r"\b(can|could) you (explain|show|tell|guide|walk)\b",
+        r"\b(i don't know|i dont know|not sure|unsure|confused) (how|where|what|about)\b",
+        r"\b(i am|i'm|im) confused\b",
+        r"\bsteps (to|for)\b",
+        r"\bguide me\b",
+        r"\bwalk me through\b",
+        r"\bexplain (step|how|that|this)\b",
     ]
     return any(re.search(p, normalized) for p in how_to_patterns)
 
 
-def _answer_common_how_to(query):
-    """
-    Provide instant, crystal-clear Windows instructions for common how-to
-    questions about troubleshooting steps, or return None to let the LLM answer.
-    """
+def _answer_common_how_to(query, conversation_history=None):
     q = str(query).lower()
+
+    generic_referrals = [
+        "do that",
+        "do this",
+        "do it",
+        "step 1",
+        "step 2",
+        "first step",
+        "second step",
+    ]
+    if any(ref in q for ref in generic_referrals) and not any(
+        kw in q
+        for kw in [
+            "reboot",
+            "restart",
+            "startup",
+            "tab",
+            "onedrive",
+            "power",
+            "battery",
+            "cache",
+            "temp",
+            "wifi",
+            "wi-fi",
+            "dns",
+            "bluetooth",
+            "printer",
+            "audio",
+            "sound",
+        ]
+    ):
+        return None
+
+    if any(k in q for k in ["reboot", "restart", "turn off and on", "shut down"]):
+        return (
+            "### How to Properly Restart (Reboot) Your Computer\n"
+            "1. **Save any open work** in your active applications (such as documents or code files).\n"
+            "2. Click the **Start button (Windows logo)** at the bottom of your screen (or press the **`Win`** key on your keyboard).\n"
+            "3. Click the **Power icon** in the bottom-right corner of the Start menu.\n"
+            "4. Select **Restart** *(Important: Click **Restart**, not **Shut down** — Windows 'Shut down' uses Fast Startup, which hibernates the kernel instead of clearing memory caches)*.\n"
+            "5. Wait 1–2 minutes for your computer to turn back on and log back in.\n\n"
+            "Let me know once you've restarted or if you'd prefer a step that doesn't require rebooting right now!"
+        )
+
+    if any(k in q for k in ["tab", "tabs", "sleeping tab", "memory saver", "browser memory"]):
+        return (
+            "### How to Free Up Browser Memory & Enable Sleeping Tabs\n"
+            "**In Google Chrome:**\n"
+            "1. Click the **three-dot menu (`⋮`)** in the top-right corner of Chrome and click **Settings**.\n"
+            "2. Click **Performance** on the left sidebar.\n"
+            "3. Turn **On** the **Memory Saver** toggle — Chrome will automatically free up RAM from inactive tabs while keeping them visible.\n\n"
+            "**In Microsoft Edge:**\n"
+            "1. Click the **three-dot menu (`...`)** in the top-right corner and select **Settings**.\n"
+            "2. Click **System and performance** on the left sidebar.\n"
+            "3. Turn **On** **Efficiency mode** and **Save resources with sleeping tabs**.\n\n"
+            "Did freeing up browser tab memory make your computer feel snappier, or is it still slow?"
+        )
 
     if "startup" in q:
         return (
@@ -381,33 +432,63 @@ def _answer_common_how_to(query):
             "Did that help, or would you like to try the next troubleshooting step?"
         )
 
-    if "adapter" in q or "wi-fi" in q or "wifi" in q:
+    if any(k in q for k in ["battery saver", "power mode", "energy saver", "power setting"]):
         return (
-            "### How to Check & Reset Your Wi-Fi Adapter on Windows\n"
-            "1. Press **`Win + I`** to open **Windows Settings**, then go to **Network & internet → Wi-Fi**.\n"
-            "2. Toggle the **Wi-Fi switch Off**, wait **10 seconds**, and toggle it back **On**.\n"
-            "3. If websites still won't load, go to **Settings → Network & internet → Advanced network settings**.\n"
-            "4. Click **Network reset** (or run the **Network Adapter Troubleshooter**) to refresh your wireless driver.\n\n"
-            "Did refreshing your Wi-Fi connection resolve the issue?"
+            "### How to Check Power Mode & Turn Off Battery Saver\n"
+            "1. Press **`Win + I`** on your keyboard to open **Windows Settings**.\n"
+            "2. Click **System → Power & battery**.\n"
+            "3. Scroll down to **Energy Saver** (or **Battery Saver**) and make sure it is turned **Off**.\n"
+            "4. Look at **Power mode** right above it and set the dropdown to **Balanced** or **Best performance**.\n\n"
+            "Did adjusting the power mode help improve your computer's speed?"
         )
 
-    if "battery saver" in q or "power mode" in q or "energy saver" in q:
+    if any(k in q for k in ["onedrive", "cloud", "sync", "dropbox", "google drive"]):
         return (
-            "### How to Change Windows Power Mode\n"
-            "1. Press **`Win + I`** to open **Settings** and click **System → Power & battery**.\n"
-            "2. Make sure **Energy Saver / Battery Saver** is turned **Off**.\n"
-            "3. Find **Power mode** and change the dropdown from *Best power efficiency* to **Balanced** or **Best performance**.\n\n"
-            "Did adjusting the power mode help improve your computer's responsiveness?"
+            "### How to Pause Background Cloud Syncing (OneDrive / Dropbox)\n"
+            "1. Look at the **bottom-right corner of your taskbar** (next to the clock) and click the small upward arrow **`^`** to show hidden tray icons.\n"
+            "2. Click the **OneDrive cloud icon** (or Dropbox/Google Drive icon).\n"
+            "3. Click the **Settings gear icon** in the top-right corner of that pop-up menu.\n"
+            "4. Click **Pause syncing** and choose **2 hours**.\n\n"
+            "Let me know once you've paused syncing, or tell me if your computer is still lagging!"
         )
 
-    if "temp" in q or "cache" in q or "disk cleanup" in q:
+    if any(k in q for k in ["temp", "cache", "disk cleanup", "temporary file", "storage"]):
         return (
             "### How to Clear Temporary Cache Files on Windows\n"
             "1. Press **`Win + I`** to open **Settings** and go to **System → Storage**.\n"
             "2. Click on **Temporary files**.\n"
-            "3. Check the boxes for **Temporary files**, **Windows Update Cleanup**, and **Thumbnails** (make sure *Downloads* is unchecked if you want to keep your downloaded files).\n"
-            "4. Click **Remove files** at the top.\n\n"
+            "3. Check the boxes for **Temporary files**, **Windows Update Cleanup**, and **Thumbnails** *(leave 'Downloads' unchecked so your personal downloads aren't deleted)*.\n"
+            "4. Click the **Remove files** button at the top.\n\n"
             "Let me know once you've tried this or if the issue is still happening!"
+        )
+
+    if any(k in q for k in ["adapter", "wi-fi", "wifi", "network reset"]):
+        return (
+            "### How to Refresh or Reset Your Wi-Fi Connection\n"
+            "1. Click the **Network / Wi-Fi icon** in the bottom-right corner of your taskbar.\n"
+            "2. Click the **Wi-Fi toggle button** to turn it **Off**, wait **10 seconds**, and click it again to turn it **On**.\n"
+            "3. If websites still won't load, press **`Win + I`** → **Network & internet → Advanced network settings** → **Network reset**.\n\n"
+            "Did refreshing your Wi-Fi connection resolve the issue?"
+        )
+
+    if "dns" in q or "flush" in q:
+        return (
+            "### How to Flush Your DNS Cache on Windows\n"
+            "1. Press the **`Win`** key on your keyboard and type **`cmd`**.\n"
+            "2. Click **Command Prompt** to open it.\n"
+            "3. Type **`ipconfig /flushdns`** and press **Enter**.\n"
+            "4. You will see the message: *Successfully flushed the DNS Resolver Cache*. Close the window and refresh your browser.\n\n"
+            "Are websites loading properly now, or is the issue still happening?"
+        )
+
+    if "bluetooth" in q or "pair" in q:
+        return (
+            "### How to Re-Pair a Bluetooth Device on Windows\n"
+            "1. Press **`Win + I`** to open **Settings** and click **Bluetooth & devices**.\n"
+            "2. Make sure the **Bluetooth** switch at the top is turned **On**.\n"
+            "3. Find your device in the list, click the **three dots (`⋮`)** next to it, and click **Remove device**.\n"
+            "4. Put your headphones/device into **Pairing Mode** (usually by holding its power/Bluetooth button until the LED flashes), then click **Add device → Bluetooth** on your PC.\n\n"
+            "Did your Bluetooth device connect, or is it still failing?"
         )
 
     return None
@@ -702,7 +783,6 @@ def run_diagnostics(route, conversation_history=None):
 
 
 def handle_query(query, conversation_history=None):
-    # Stateless unit test compatibility (when conversation_history is None)
     if conversation_history is None:
         decision = decide_action(query, conversation_history=None)
         action = decision.get("action", "rag")
@@ -752,9 +832,6 @@ def handle_query(query, conversation_history=None):
             "agent_decision": decision,
         }
 
-    # ============================================================
-    # MULTI-TURN INTERACTIVE CONVERSATION FLOW
-    # ============================================================
     original_issue = _get_original_issue(query, conversation_history)
     assistant_turns = _count_assistant_turns(conversation_history)
     step_batches_shown = _count_step_batches_shown(conversation_history)
@@ -764,7 +841,6 @@ def handle_query(query, conversation_history=None):
         for k in ["slow", "lag", "freeze", "memory", "ram", "disk", "performance"]
     )
 
-    # 0. Check if user says the problem is solved
     if assistant_turns >= 1 and _is_problem_resolved_message(query):
         return {
             "route": "rag",
@@ -776,7 +852,6 @@ def handle_query(query, conversation_history=None):
             },
         }
 
-    # 1. Explicit escalation request
     if "escalate" in normalized_query or "support ticket" in normalized_query:
         diag = _gather_full_diagnostics_for_ticket(
             original_issue, conversation_history
@@ -802,9 +877,8 @@ def handle_query(query, conversation_history=None):
             },
         }
 
-    # 1.5 Handle "How-To" / Clarification Questions (e.g., "how to disable startup applications")
     if assistant_turns >= 1 and _is_how_to_or_clarification_question(query):
-        direct_how_to = _answer_common_how_to(query)
+        direct_how_to = _answer_common_how_to(query, conversation_history)
         if direct_how_to:
             return {
                 "route": "rag",
@@ -815,19 +889,19 @@ def handle_query(query, conversation_history=None):
                     "question": "",
                 },
             }
-        # Otherwise let the LLM answer the specific how-to question
-        answer = generate_answer(query, conversation_history=conversation_history)
+        answer = generate_how_to_answer(
+            query, conversation_history=conversation_history
+        )
         return {
             "route": "rag",
             "answer": answer,
             "agent_decision": {
                 "action": "rag",
-                "reason": "Answered user how-to question via LLM.",
+                "reason": "Answered user how-to question for the previous troubleshooting step.",
                 "question": "",
             },
         }
 
-    # 2. Handle Process-State Replies ("i am using it right now", "i need it", "yes", "i closed it")
     if conversation_history and _is_process_state_message(
         query, conversation_history
     ):
@@ -845,7 +919,6 @@ def handle_query(query, conversation_history=None):
             or (excluded[-1] if excluded else "that application")
         )
 
-        # User closed the process
         if (
             normalized_query in NEGATIVE_PROCESS_REPLIES
             or "closed" in normalized_query
@@ -869,7 +942,6 @@ def handle_query(query, conversation_history=None):
                 },
             }
 
-        # Check if there is a 2nd user-controlled process using noticeable RAM (>= 1.5%)
         proc_diag = get_top_processes(
             excluded_processes=excluded,
             required_processes=required,
@@ -896,7 +968,6 @@ def handle_query(query, conversation_history=None):
                 },
             }
 
-        # Provide Batch 1 of tailored, diagnostic-driven steps
         uptime = check_system_uptime()
         cpu = check_cpu_usage(interval=0.2)
         batches = _build_tailored_performance_batches(conversation_history)
@@ -929,7 +1000,6 @@ def handle_query(query, conversation_history=None):
             },
         }
 
-    # 3. Follow-Up Turns When User Says "Not comfortable", "No", "Still slow", "Didn't work", "Check"
     if assistant_turns >= 1 and (
         _is_uncomfortable_or_alternative_request(query)
         or _is_unresolved_message(query)
@@ -999,7 +1069,6 @@ def handle_query(query, conversation_history=None):
             },
         }
 
-    # 4. Standard First-Turn Routing (or New Topic)
     decision = decide_action(
         query,
         conversation_history=conversation_history,

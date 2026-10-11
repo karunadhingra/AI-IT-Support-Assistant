@@ -1,33 +1,33 @@
 [
     {
-        "id": "performance_001",
-        "category": "Performance",
-        "problem": "Computer is running very slowly",
+        "id": "wifi_001",
+        "category": "Network",
+        "problem": "Wi-Fi is not working or cannot connect",
         "symptoms": [
-            "Applications take a long time to open",
-            "Computer responds slowly",
-            "System freezes or lags frequently",
-            "Computer is slow after startup"
+            "My Wi-Fi is not working",
+            "Cannot connect to Wi-Fi",
+            "Wi-Fi network not showing",
+            "No internet connection over Wi-Fi",
+            "Wi-Fi keeps disconnecting"
         ],
         "possible_causes": [
-            "Browser tab overload or hardware acceleration lag",
-            "Pending Windows restart or long system uptime",
-            "Power saving mode throttling CPU speed",
-            "Too many startup programs launching at boot",
-            "Corrupted temporary cache or outdated system drivers"
+            "Wi-Fi adapter is disabled",
+            "Router or modem needs a restart",
+            "Airplane mode is turned on",
+            "Outdated or corrupted network adapter driver"
         ],
         "troubleshooting_steps": [
-            "Restart your computer completely (Start -> Power -> Restart) to clear cached memory and reset background system services.",
-            "Close unused browser tabs or put inactive tabs to sleep, as each open tab consumes dedicated memory and CPU threads.",
-            "Unplug and reconnect your laptop charger, and make sure Battery Saver / Energy Saver mode is turned off in the system tray.",
-            "Pause active cloud sync tools (such as OneDrive, Dropbox, or Google Drive) and wait for any background Windows Updates to finish.",
-            "Clear temporary Windows files by opening Storage Settings or running Disk Cleanup to remove cached temp files.",
-            "Turn off visual transparency and animation effects in Windows Accessibility > Visual Effects to reduce GPU and UI lag."
+            "Check whether Wi-Fi is enabled.",
+            "Restart the Wi-Fi connection.",
+            "Make sure Airplane Mode is turned off in your Windows taskbar network settings.",
+            "Restart your Wi-Fi router and modem by unplugging them for 30 seconds and plugging them back in.",
+            "Forget the Wi-Fi network in Windows Settings -> Network & internet -> Wi-Fi and reconnect by re-entering your password.",
+            "Run the Windows Network Adapter Troubleshooter or perform a Network Reset in Advanced network settings."
         ],
         "escalate_when": [
-            "The computer remains extremely slow after trying basic troubleshooting steps.",
-            "The system frequently freezes or crashes.",
-            "Hardware problems or deeper OS corruption are suspected."
+            "Wi-Fi networks still do not appear after restarting the adapter and router.",
+            "Other devices can connect to the same Wi-Fi network, but this computer cannot.",
+            "The wireless network card appears faulty or missing in Device Manager."
         ]
     },
     {
