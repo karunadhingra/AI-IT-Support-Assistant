@@ -1,961 +1,483 @@
 import json
 import re
-
 import ollama
 
 
 AGENT_MODEL = "llama3.2:3b"
 
-
-AGENT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "action": {
-            "type": "string",
-            "enum": [
-                "follow_up",
-                "rag",
-                "network_diagnostics",
-                "performance_diagnostics",
-            ],
-        },
-        "reason": {"type": "string"},
-        "question": {"type": "string"},
-    },
-    "required": ["action", "reason", "question"],
+VALID_ACTIONS = {
+    "follow_up",
+    "rag",
+    "network_diagnostics",
+    "performance_diagnostics",
 }
-
-
-NETWORK_KEYWORDS = [
-    "wifi",
-    "wi-fi",
-    "internet",
-    "network",
-    "dns",
-    "ping",
-    "router",
-    "connectivity",
-]
-
-
-PERFORMANCE_KEYWORDS = [
-    "slow",
-    "lag",
-    "lagging",
-    "memory",
-    "ram",
-    "disk",
-    "storage",
-    "space",
-    "freezing",
-    "freeze",
-    "frozen",
-    "performance",
-    "process",
-    "processes",
-    "application",
-    "applications",
-    "background",
-    "cpu",
-]
-
-
-DEVICE_KEYWORDS = [
-    "bluetooth",
-    "headphone",
-    "headphones",
-    "earphone",
-    "earphones",
-    "earbuds",
-    "mouse",
-    "keyboard",
-    "speaker",
-    "printer",
-    "usb",
-    "webcam",
-    "device",
-]
-
-
-INFORMATIONAL_PHRASES = [
-    "network security",
-    "improve my network",
-    "learn about network",
-    "explain network",
-    "what is network",
-    "how does network",
-    "how can i improve",
-    "how do i improve",
-    "best practices",
-    "security tips",
-]
 
 
 def _format_history(conversation_history):
     if not conversation_history:
         return "No previous conversation."
 
-    history_parts = []
+    lines = []
 
     for message in conversation_history:
         role = message.get("role", "unknown")
         content = message.get("content", "")
 
         if content:
-            history_parts.append(
-                f"{role}: {content}"
-            )
+            lines.append(f"{role}: {content}")
 
-    return "\n".join(history_parts) or "No previous conversation."
+    return "\n".join(lines) if lines else "No previous conversation."
 
 
-def _is_short_follow_up(query):
-    normalized = query.lower().strip()
+def _extract_json_object(raw_text):
+    if not raw_text:
+        return None
 
-    short_replies = {
+    raw_text = raw_text.strip()
+
+    try:
+        return json.loads(raw_text)
+    except Exception:
+        pass
+
+    match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+    if not match:
+        return None
+
+    try:
+        return json.loads(match.group(0))
+    except Exception:
+        return None
+
+
+def _normalize_query(query):
+    normalized = re.sub(r"[^\w\s'-]", " ", str(query).lower())
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _is_vague_problem_statement(query):
+    """
+    Deterministically detect vague problem statements like:
+    - "my computer has a problem"
+    - "something is wrong with my laptop"
+    - "my pc is not working"
+    - "i need help with my computer"
+    that do NOT mention any specific symptom or component.
+    """
+    normalized = _normalize_query(query)
+    if not normalized:
+        return True
+
+    specific_keywords = {
+        "slow", "slowly", "lag", "lagging", "freeze", "freezing", "hang", "hanging",
+        "ram", "memory", "cpu", "disk", "storage", "space", "full", "startup",
+        "wifi", "wi-fi", "internet", "network", "dns", "website", "websites", "browser",
+        "ethernet", "lan", "vpn", "connected", "disconnect", "disconnecting", "connection",
+        "bluetooth", "headphone", "headphones", "earbuds", "speaker", "speakers",
+        "sound", "audio", "mic", "microphone", "volume", "mute",
+        "printer", "print", "printing", "scanner",
+        "monitor", "screen", "display", "flicker", "black", "blue", "bsod", "crash", "hdmi",
+        "keyboard", "keys", "typing", "mouse", "touchpad", "cursor", "click",
+        "usb", "port", "drive", "flash",
+        "battery", "charge", "charging", "charger", "power", "turn on", "boot",
+        "hot", "overheat", "overheating", "fan", "loud", "thermal",
+        "password", "login", "locked", "account", "sign in",
+        "update", "windows update", "install", "software", "app", "application",
+        "outlook", "email", "teams", "zoom", "chrome", "code", "python",
+    }
+
+    words = set(normalized.split())
+    if words.intersection(specific_keywords):
+        return False
+
+    for kw in specific_keywords:
+        if " " in kw and kw in normalized:
+            return False
+
+    vague_patterns = [
+        r"^(my )?(computer|laptop|pc|system|device|machine) (has a |is having a )?(problem|issue|trouble|error|bug)s?$",
+        r"^(my )?(computer|laptop|pc|system|device|machine) (is not|isn't|isnt|won't|wont) working$",
+        r"^something is (wrong|broken|not working)( with my (computer|laptop|pc|system))?$",
+        r"^(i have|there is) a (problem|issue)( with my (computer|laptop|pc|system))?$",
+        r"^(help|need help|i need help|can you help|please help)( me)?( with my (computer|laptop|pc))?$",
+        r"^(it|this) (is not|isn't|isnt) working$",
+        r"^not working$",
+    ]
+
+    return any(re.search(pattern, normalized) for pattern in vague_patterns)
+
+
+def _is_short_confirmation_or_update(query):
+    normalized = _normalize_query(query)
+
+    short_messages = {
         "yes",
         "yeah",
         "yep",
-        "okay",
-        "ok",
-        "sure",
-        "do it",
-        "go ahead",
-        "try it",
-        "please do",
-        "continue",
-        "that worked",
-        "it worked",
         "no",
         "nope",
-    }
-
-    return normalized in short_replies
-
-
-def _is_process_state_reply(query):
-    """
-    Detect replies where the user is simply telling the assistant
-    whether a previously recommended application/process can be
-    closed.
-
-    These messages should NOT trigger another full performance
-    diagnostic by themselves.
-    """
-
-    normalized = re.sub(
-        r"\s+",
-        " ",
-        query.lower().strip(),
-    )
-
-    if not normalized:
-        return False
-
-    state_replies = {
+        "ok",
+        "okay",
+        "sure",
+        "done",
+        "i did",
+        "i did that",
+        "i tried",
+        "i tried that",
+        "already tried",
+        "tried that",
+        "not yet",
+        "not now",
         "i need it",
         "i need that",
         "i need this",
-        "need it",
-        "need that",
-        "need this",
         "i still need it",
         "i still need that",
         "i still need this",
-        "i want it",
-        "i still want it",
-        "i need that also",
-        "i need this also",
-        "i need it also",
-        "i want that",
-        "i want this",
         "i can't close it",
         "i cannot close it",
-        "can't close it",
-        "cannot close it",
-        "i don't want to close it",
-        "i do not want to close it",
-        "i need to keep it open",
-        "i need to keep this open",
-        "i need to keep that open",
         "keep it open",
-        "keep that open",
         "keep this open",
-        "not now",
-        "not yet",
+        "keep that open",
+        "i closed it",
+        "already closed",
     }
 
-    if normalized in state_replies:
-        return True
-
-    state_patterns = [
-        r"^i need (it|that|this|the application)\b",
-        r"^i still need (it|that|this|the application)\b",
-        r"^i want (it|that|this)\b",
-        r"^i still want (it|that|this)\b",
-        r"^i can't close (it|that|this)\b",
-        r"^i cannot close (it|that|this)\b",
-        r"^i don't want to close (it|that|this)\b",
-        r"^i do not want to close (it|that|this)\b",
-        r"^i need to keep (it|that|this) open\b",
-        r"^keep (it|that|this) open\b",
-    ]
-
-    return any(
-        re.search(pattern, normalized)
-        for pattern in state_patterns
-    )
+    return normalized in short_messages
 
 
-def _is_contextual_follow_up(
-    query,
-    conversation_history=None,
-):
-    """
-    Detect whether the current message is a response to
-    the previous troubleshooting conversation rather than
-    a completely new IT problem.
-    """
-
+def _is_contextual_follow_up(query, conversation_history=None):
     if not conversation_history:
         return False
 
-    normalized = query.lower().strip()
+    if _is_vague_problem_statement(query):
+        return False
+
+    normalized = _normalize_query(query)
 
     if not normalized:
         return False
 
-    if _is_process_state_reply(query):
+    if _is_short_confirmation_or_update(normalized):
         return True
 
-    if _is_short_follow_up(query):
-        return True
-
-    action_response_patterns = [
-        r"^i need\b",
-        r"^i still need\b",
-        r"^i want\b",
-        r"^i still want\b",
-        r"^i can't\b",
-        r"^i cannot\b",
-        r"^i don't want\b",
-        r"^i do not want\b",
-        r"^i already\b",
-        r"^i did\b",
-        r"^i didn't\b",
-        r"^i did not\b",
-        r"^i haven't\b",
-        r"^i have not\b",
-        r"^not yet\b",
-        r"^not now\b",
-        r"^still\b",
-        r"^already\b",
+    follow_up_patterns = [
+        r"^i (still )?(need|want|use|am using|m using)\b",
+        r"^i (can't|cannot|don't want to|do not want to) close\b",
+        r"^i (already )?(closed|restarted|tried|checked|updated|disabled|disconnected|unplugged)\b",
+        r"^(it|that|this|they) (is|was|are|were|still|didn't|did not|doesn't|does not)\b",
+        r"^(the )?(app|application|process|program|device|headphones|speaker|printer|keyboard|mouse|monitor|usb)\b",
+        r"^still (not|the same|having)\b",
+        r"^(didn't|did not|doesn't|does not) work\b",
+        r"^not comfortable\b",
     ]
 
-    if any(
-        re.search(pattern, normalized)
-        for pattern in action_response_patterns
-    ):
-        return True
-
-    contextual_patterns = [
-        r"^it was\b",
-        r"^they were\b",
-        r"^they are\b",
-        r"^it is\b",
-        r"^it was purchased\b",
-        r"^they were purchased\b",
-        r"^purchased in\b",
-        r"^bought in\b",
-        r"^i haven't\b",
-        r"^i have not\b",
-        r"^i did\b",
-        r"^i didn't\b",
-        r"^i did not\b",
-        r"^i don't\b",
-        r"^i do not\b",
-        r"^not recently\b",
-        r"^recently\b",
-    ]
-
-    if any(
-        re.search(pattern, normalized)
-        for pattern in contextual_patterns
-    ):
-        return True
-
-    word_count = len(normalized.split())
-
-    if word_count <= 10:
-        return True
-
-    return False
+    return any(re.search(pattern, normalized) for pattern in follow_up_patterns)
 
 
-def _is_informational_query(query):
-    normalized = re.sub(
-        r"\s+",
-        " ",
-        query.lower().strip(),
-    )
+def _has_explicit_network_failure(query):
+    normalized = _normalize_query(query)
 
-    return any(
-        phrase in normalized
-        for phrase in INFORMATIONAL_PHRASES
-    )
-
-
-def _is_device_problem(query):
-    normalized = query.lower()
-
-    return any(
-        keyword in normalized
-        for keyword in DEVICE_KEYWORDS
-    )
-
-
-def _history_contains_keyword(
-    conversation_history,
-    keywords,
-):
-    if not conversation_history:
+    if _is_vague_problem_statement(normalized):
         return False
 
-    history_text = " ".join(
-        str(message.get("content", ""))
-        for message in conversation_history
-    ).lower()
-
-    return any(
-        keyword in history_text
-        for keyword in keywords
-    )
-
-
-def _get_recent_context_route(
-    conversation_history,
-):
-    """
-    Determine the most relevant diagnostic category from
-    the recent troubleshooting conversation.
-
-    This is used only when the current message actually
-    requires continuing diagnostics.
-
-    Simple process-state replies such as "I need it" are
-    handled separately and must not automatically trigger
-    another diagnostic run.
-    """
-
-    if not conversation_history:
-        return None
-
-    recent_messages = conversation_history[-8:]
-
-    recent_text = " ".join(
-        str(message.get("content", ""))
-        for message in recent_messages
-        if message.get("content")
-    ).lower()
-
-    performance_score = 0
-    network_score = 0
-
-    for keyword in PERFORMANCE_KEYWORDS:
-        if keyword in recent_text:
-            performance_score += 1
-
-    for keyword in NETWORK_KEYWORDS:
-        if keyword in recent_text:
-            network_score += 1
-
-    if performance_score > network_score:
-        return "performance_diagnostics"
-
-    if network_score > performance_score:
-        return "network_diagnostics"
-
-    return None
-
-
-def _keyword_route(
-    query,
-    conversation_history=None,
-):
-    """
-    Detect a diagnostic category using both the current
-    message and relevant conversation history.
-    """
-
-    if _is_informational_query(query):
-        return None
-
-    if _is_device_problem(query):
-        return None
-
-    words = set(
-        re.findall(
-            r"\b[a-z0-9-]+\b",
-            query.lower(),
-        )
-    )
-
-    query_lower = query.lower()
-
-    # --------------------------------------------------------
-    # NETWORK
-    # --------------------------------------------------------
-
-    network_problem_indicators = {
-        "not working",
-        "doesn't work",
-        "doesnt work",
-        "cannot connect",
-        "can't connect",
-        "cant connect",
+    network_keywords = [
+        "wifi",
+        "wi-fi",
+        "internet",
+        "network",
+        "dns",
+        "website",
+        "websites",
+        "browser",
+        "ethernet",
+        "lan",
+        "connection",
+        "disconnect",
         "disconnected",
         "disconnecting",
-        "unavailable",
-        "failed",
-        "failure",
-        "no internet",
-        "keeps dropping",
-        "won't connect",
-        "wont connect",
-        "unable to connect",
-        "still won't connect",
-        "still wont connect",
-        "still can't connect",
-        "still cant connect",
-        "still cannot connect",
-    }
+        "online",
+    ]
 
-    has_network_keyword = any(
-        keyword in words
-        for keyword in NETWORK_KEYWORDS
-    )
+    exclusion_keywords = [
+        "bluetooth",
+        "headphone",
+        "headphones",
+        "earbud",
+        "earbuds",
+        "airpods",
+        "speaker",
+        "speakers",
+        "microphone",
+        "mic",
+        "audio",
+        "sound",
+        "usb",
+        "mouse",
+        "keyboard",
+        "printer",
+        "monitor",
+        "hdmi",
+        "charger",
+        "battery",
+    ]
 
-    has_network_problem = any(
-        indicator in query_lower
-        for indicator in network_problem_indicators
-    )
+    if any(word in normalized for word in exclusion_keywords):
+        return False
 
-    history_has_network_context = (
-        _history_contains_keyword(
-            conversation_history,
-            NETWORK_KEYWORDS,
-        )
-    )
+    if any(word in normalized for word in network_keywords):
+        return True
 
-    if (
-        has_network_keyword
-        and has_network_problem
-    ):
-        return "network_diagnostics"
+    network_patterns = [
+        r"\bno internet\b",
+        r"\bcannot connect to (the )?(internet|wifi|wi-fi|network)\b",
+        r"\bcan't connect to (the )?(internet|wifi|wi-fi|network)\b",
+        r"\bwebsites? (are not|aren't|won't|will not) (loading|opening)\b",
+        r"\bpages? (are not|aren't|won't|will not) (loading|opening)\b",
+        r"\binternet is (down|slow|not working|disconnected)\b",
+        r"\bwifi is (down|slow|not working|disconnected)\b",
+        r"\bwi-fi is (down|slow|not working|disconnected)\b",
+    ]
 
-    if (
-        has_network_problem
-        and history_has_network_context
-    ):
-        return "network_diagnostics"
-
-    # --------------------------------------------------------
-    # PERFORMANCE
-    # --------------------------------------------------------
-
-    performance_problem_indicators = {
-        "slow",
-        "lag",
-        "lagging",
-        "freezing",
-        "freeze",
-        "frozen",
-        "running slowly",
-        "runs slowly",
-        "not responding",
-        "high memory usage",
-        "low disk space",
-        "disk full",
-        "running out of space",
-        "performance issue",
-        "performance problem",
-        "computer is slow",
-        "computer is running slowly",
-    }
-
-    has_performance_keyword = any(
-        keyword in words
-        for keyword in PERFORMANCE_KEYWORDS
-    )
-
-    has_performance_problem = any(
-        indicator in query_lower
-        for indicator in performance_problem_indicators
-    )
-
-    history_has_performance_context = (
-        _history_contains_keyword(
-            conversation_history,
-            PERFORMANCE_KEYWORDS,
-        )
-    )
-
-    if (
-        has_performance_keyword
-        and has_performance_problem
-    ):
-        return "performance_diagnostics"
-
-    if (
-        has_performance_problem
-        and history_has_performance_context
-    ):
-        return "performance_diagnostics"
-
-    return None
+    return any(re.search(pattern, normalized) for pattern in network_patterns)
 
 
-def _fallback_decision(
-    query,
-    conversation_history=None,
-):
+def _has_explicit_performance_failure(query):
+    normalized = _normalize_query(query)
+
+    if _is_vague_problem_statement(normalized):
+        return False
+
+    exclusion_keywords = [
+        "internet",
+        "wifi",
+        "wi-fi",
+        "network",
+        "website",
+        "websites",
+        "download",
+        "upload",
+        "bluetooth",
+        "printer",
+        "audio",
+        "sound",
+    ]
+
+    if any(word in normalized for word in exclusion_keywords):
+        return False
+
+    performance_patterns = [
+        r"\bslow\b",
+        r"\bslowly\b",
+        r"\btaking a long time\b",
+        r"\btakes a long time\b",
+        r"\bslow performance\b",
+        r"\bsystem lag\b",
+        r"\b(lagging|freezing|hanging|stuttering)\b",
+        r"\bhigh (cpu|memory|ram|disk)\b",
+        r"\b(memory|ram|cpu|disk) usage is high\b",
+        r"\blow disk space\b",
+        r"\bdisk is full\b",
+        r"\bout of (memory|ram|disk space|storage)\b",
+        r"\bstorage is full\b",
+    ]
+
+    return any(re.search(pattern, normalized) for pattern in performance_patterns)
+
+
+def _validate_current_problem_route(query, decision, conversation_history=None):
     """
-    Deterministic fallback when the LLM cannot make a
-    valid decision.
+    Guardrail so deterministic rules prevent misrouting or endless
+    follow-up questions from the small LLM.
     """
-
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # Process-state replies are NOT new diagnostic requests.
-    # --------------------------------------------------------
-
-    if _is_process_state_reply(query):
+    if not isinstance(decision, dict):
         return {
             "action": "rag",
-            "reason": (
-                "The user is responding to a previous process "
-                "recommendation and does not appear to be "
-                "reporting a new performance problem."
-            ),
+            "reason": "Fallback to knowledge-base retrieval.",
             "question": "",
         }
 
-    keyword_route = _keyword_route(
-        query,
-        conversation_history,
-    )
-
-    if keyword_route == "network_diagnostics":
-        return {
-            "action": "network_diagnostics",
-            "reason": (
-                "The current problem appears to be "
-                "a network connectivity issue."
-            ),
-            "question": "",
-        }
-
-    if keyword_route == "performance_diagnostics":
+    # 1. FIRST: Check if the message explicitly describes a Performance or Network issue!
+    # (e.g., "the computer is slow"[cite: 22], "my wifi is not working")
+    if _has_explicit_performance_failure(query):
         return {
             "action": "performance_diagnostics",
-            "reason": (
-                "The current problem appears to be related "
-                "to system performance."
-            ),
+            "reason": "The current message explicitly describes a system performance, memory, CPU, or disk issue.",
             "question": "",
         }
 
-    if _is_contextual_follow_up(
-        query,
-        conversation_history,
-    ):
-        contextual_route = _get_recent_context_route(
-            conversation_history
-        )
+    if _has_explicit_network_failure(query):
+        return {
+            "action": "network_diagnostics",
+            "reason": "The current message explicitly describes a network or internet connectivity issue.",
+            "question": "",
+        }
 
-        if contextual_route == "performance_diagnostics":
-            return {
-                "action": "rag",
-                "reason": (
-                    "The latest message is a contextual response "
-                    "to the ongoing troubleshooting conversation, "
-                    "but it does not itself report a new performance "
-                    "failure."
-                ),
-                "question": "",
-            }
-
-        if contextual_route == "network_diagnostics":
-            return {
-                "action": "rag",
-                "reason": (
-                    "The latest message is a contextual response "
-                    "to the ongoing troubleshooting conversation, "
-                    "but it does not itself report a new network "
-                    "failure."
-                ),
-                "question": "",
-            }
-
+    # 2. SECOND: If we are already in an ongoing conversation (conversation_history is not empty),
+    # NEVER allow another `follow_up` question! Route straight to RAG or diagnostics.
+    if conversation_history:
         return {
             "action": "rag",
             "reason": (
-                "The latest message appears to continue "
-                "the previous troubleshooting conversation."
+                "The conversation is already in progress; proceeding directly "
+                "to troubleshooting instead of asking another follow-up question."
             ),
             "question": "",
         }
 
+    # 3. THIRD: Only on Turn 1, if the user's message is genuinely vague
+    # (e.g., "my computer has a problem"[cite: 20, 21]), ask ONE clarifying question.
+    if _is_vague_problem_statement(query):
+        question = decision.get("question", "").strip()
+        if not question:
+            question = (
+                "Could you tell me a bit more about what's happening with your computer? "
+                "For example, is it running slowly, having trouble connecting to Wi-Fi, "
+                "or having an issue with audio, display, or another device?"
+            )
+        return {
+            "action": "follow_up",
+            "reason": "The user reported a vague problem without specifying symptoms.",
+            "question": question,
+        }
+
+    # 4. Allow LLM follow_up on Turn 1 if it provided a valid question
+    if decision.get("action") == "follow_up" and decision.get("question"):
+        return decision
+
+    # 5. Otherwise, go straight to Knowledge Base (RAG) troubleshooting!
     return {
         "action": "rag",
-        "reason": (
-            "The current problem can be investigated "
-            "using the knowledge base."
+        "reason": decision.get(
+            "reason",
+            "Knowledge-base guidance is the best fit for the current query.",
         ),
         "question": "",
     }
 
 
-def _validate_current_problem_route(
-    query,
-    decision,
-    conversation_history=None,
-):
+def decide_action(query, conversation_history=None):
     """
-    Validate the LLM decision against deterministic
-    routing rules.
+    Use the LLM agent to decide how the system should handle
+    the user's request, then validate the decision so the
+    active problem in the current message takes priority.
     """
-
-    if _is_informational_query(query):
-        return decision
-
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # Process-state replies must NEVER be forced into
-    # performance diagnostics.
-    # --------------------------------------------------------
-
-    if _is_process_state_reply(query):
+    if not query or not str(query).strip():
         return {
-            "action": "rag",
-            "reason": (
-                "The user is responding to a previous process "
-                "recommendation rather than reporting a new "
-                "performance problem."
-            ),
-            "question": "",
+            "action": "follow_up",
+            "reason": "The query is empty or unclear.",
+            "question": "Could you describe the IT issue you are experiencing?",
         }
 
-    # --------------------------------------------------------
-    # Bluetooth and peripheral problems should use RAG.
-    # --------------------------------------------------------
-
-    if _is_device_problem(query):
-        return {
-            "action": "rag",
-            "reason": (
-                "The current problem involves a device or "
-                "peripheral that is not covered by the "
-                "available live network diagnostics."
-            ),
-            "question": "",
-        }
-
-    keyword_route = _keyword_route(
-        query,
-        conversation_history,
-    )
-
-    # --------------------------------------------------------
-    # A clear current network problem takes priority.
-    # --------------------------------------------------------
-
-    if keyword_route == "network_diagnostics":
-        return {
-            "action": "network_diagnostics",
-            "reason": (
-                "The current message describes or continues "
-                "a network connectivity problem, so live "
-                "network diagnostics are appropriate."
-            ),
-            "question": "",
-        }
-
-    # --------------------------------------------------------
-    # A clear current performance problem takes priority.
-    # --------------------------------------------------------
-
-    if keyword_route == "performance_diagnostics":
-        return {
-            "action": "performance_diagnostics",
-            "reason": (
-                "The current message describes or continues "
-                "a performance problem, so live performance "
-                "diagnostics are appropriate."
-            ),
-            "question": "",
-        }
-
-    # --------------------------------------------------------
-    # Other contextual replies should not automatically
-    # trigger another diagnostic.
-    # --------------------------------------------------------
-
-    if _is_contextual_follow_up(
-        query,
-        conversation_history,
-    ):
-        return {
-            "action": "rag",
-            "reason": (
-                "The current message appears to continue "
-                "the previous troubleshooting conversation "
-                "without reporting a new diagnostic problem."
-            ),
-            "question": "",
-        }
-
-    return decision
-
-
-def decide_action(
-    query,
-    conversation_history=None,
-):
-    """
-    Ask the local LLM to choose the best action for the
-    user's current IT problem.
-    """
-
-    # --------------------------------------------------------
-    # Handle process-state replies before calling the LLM.
-    #
-    # This is deliberate. Messages such as "I need it" are
-    # state updates, not diagnostic requests.
-    # --------------------------------------------------------
-
-    if _is_process_state_reply(query):
-        return {
-            "action": "rag",
-            "reason": (
-                "The user is responding to a previous process "
-                "recommendation and does not report a new "
-                "performance failure."
-            ),
-            "question": "",
-        }
-
-    history_text = _format_history(
-        conversation_history
-    )
+    history_text = _format_history(conversation_history)
 
     prompt = f"""
-You are the decision-making agent of an AI IT Support Assistant.
+You are the decision-making agent for an AI IT Support Assistant.
 
-Choose the SINGLE best next action for the user's CURRENT message.
+Your job is to inspect the user's CURRENT message and the recent conversation
+history, then choose the single best action.
 
 Available actions:
 
-1. follow_up
-   Ask one useful question when important information is missing.
+1. "follow_up"
+Choose this ONLY when the user's problem is still too vague to diagnose or
+search effectively (for example: "my computer has a problem"[cite: 20, 21], "something is broken").
+If you choose "follow_up", provide ONE short, specific clarifying question.
 
-2. rag
-   Answer informational questions and use documented
-   troubleshooting guidance from the knowledge base.
+2. "rag"
+Choose this when the user is asking for troubleshooting steps, explanations,
+or follow-up help that can be answered from the IT knowledge base, OR when the
+current message is about devices/peripherals/audio/bluetooth/software/hardware
+rather than internet connectivity or computer slowness.
 
-3. network_diagnostics
-   Run live ping and DNS checks for current network failures,
-   Wi-Fi connection failures, internet outages, DNS failures,
-   or connectivity problems.
+3. "network_diagnostics"
+Choose this ONLY when the user's CURRENT problem is specifically about internet,
+Wi-Fi, DNS, network connectivity, or websites failing to load.
 
-4. performance_diagnostics
-   Run live disk-space, memory, and process checks for
-   computer slowness, freezing, RAM problems, or
-   performance issues.
+4. "performance_diagnostics"
+Choose this ONLY when the user's CURRENT problem is specifically about slow
+computer performance, freezing, high memory usage, high CPU usage, or low disk space.
 
-Important routing rules:
-
-- Prioritize the latest explicit user message.
-- Use conversation history to understand contextual replies.
-- Do not let an older problem override a new explicit problem.
-- Distinguish asking for information from reporting a live failure.
-- Questions about security concepts, best practices, or how
-  to improve a system should normally use RAG.
-- Bluetooth, headphones, earbuds, keyboards, mice, printers,
-  USB devices, webcams, and other peripheral/device problems
-  should use RAG unless a dedicated diagnostic action exists.
-- Do NOT classify Bluetooth problems as network diagnostics.
-- The available network diagnostics only test ping and DNS.
-- The available performance diagnostics test disk space,
-  memory, and running processes.
-- Prefer diagnostics only when the available checks can
-  actually investigate the reported failure.
-- Do not invent diagnostic results.
-
-IMPORTANT PROCESS-STATE RULE:
-
-If the user is simply responding to a previous recommendation
-about closing an application or process, do NOT start another
-full performance diagnostic.
-
-Examples:
-
-Assistant:
-"python.exe is using some RAM. If you do not need it,
-consider closing it."
-
-User:
-"I need it."
-
-Correct action:
-rag
-
-Assistant:
-"Chrome is using some memory. Consider closing it if
-you do not need it."
-
-User:
-"I need that also."
-
-Correct action:
-rag
-
-Other process-state replies include:
-
-- "I need it"
-- "I need that"
-- "I still need it"
-- "I need that also"
-- "I need this also"
-- "I can't close it"
-- "I cannot close it"
-- "I don't want to close it"
-- "I need to keep it open"
-- "not yet"
-- "not now"
-
-These messages are NOT new performance failures.
-
-However, if the user explicitly reports that the computer
-is still slow, lagging, freezing, or having high memory usage,
-then performance_diagnostics is appropriate.
-
-For example:
-
-User:
-"I need Chrome."
-
-This is a process preference, not a performance diagnostic.
-
-User:
-"My computer is still slow even after closing Chrome."
-
-This IS a performance problem and should use
-performance_diagnostics.
-
-For network troubleshooting:
-
-User:
-"I need it."
-
-If this is simply a response to a previous recommendation,
-do not start another network diagnostic.
-
-But:
-
-User:
-"My internet is still not working."
-
-This IS a network problem and should use
-network_diagnostics.
-
-If choosing follow_up, provide one relevant, non-empty question.
-
-Return valid JSON matching the supplied schema.
-
-Previous conversation:
-
+Conversation history:
 {history_text}
 
-CURRENT user message:
-
+Current user message:
 {query}
+
+Return ONLY valid JSON in this exact format:
+{{
+  "action": "follow_up | rag | network_diagnostics | performance_diagnostics",
+  "reason": "brief explanation",
+  "question": "clarifying question if action is follow_up, otherwise empty string"
+}}
 """
 
     try:
         response = ollama.chat(
             model=AGENT_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            format=AGENT_SCHEMA,
+            messages=[{"role": "user", "content": prompt}],
         )
 
-        content = response["message"]["content"]
+        raw_content = response["message"]["content"]
+        parsed = _extract_json_object(raw_content)
 
-        decision = json.loads(content)
-
-        valid_actions = {
-            "follow_up",
-            "rag",
-            "network_diagnostics",
-            "performance_diagnostics",
-        }
-
-        if decision.get("action") not in valid_actions:
-            return _fallback_decision(
+        if not parsed:
+            fallback = {
+                "action": "rag",
+                "reason": "Model output was not valid JSON; defaulting to RAG.",
+                "question": "",
+            }
+            return _validate_current_problem_route(
                 query,
-                conversation_history,
+                fallback,
+                conversation_history=conversation_history,
             )
 
-        decision["reason"] = str(
-            decision.get("reason", "")
-        ).strip()
+        action = str(parsed.get("action", "")).strip()
+        reason = str(parsed.get("reason", "")).strip()
+        question = str(parsed.get("question", "")).strip()
 
-        decision["question"] = str(
-            decision.get("question", "")
-        ).strip()
+        if action not in VALID_ACTIONS:
+            fallback = {
+                "action": "rag",
+                "reason": "Invalid action returned by model; defaulting to RAG.",
+                "question": "",
+            }
+            return _validate_current_problem_route(
+                query,
+                fallback,
+                conversation_history=conversation_history,
+            )
 
-        if decision["action"] == "follow_up":
+        if action == "follow_up" and not question:
+            question = (
+                "Could you tell me a little more about what is happening "
+                "and when the issue started?"
+            )
 
-            if not decision["question"]:
-                decision["question"] = (
-                    "Could you describe the problem "
-                    "you are experiencing?"
-                )
+        if action != "follow_up":
+            question = ""
 
-            if not decision["reason"]:
-                decision["reason"] = (
-                    "More information is needed to understand "
-                    "the current problem."
-                )
+        decision = {
+            "action": action,
+            "reason": reason or "Action selected by agent.",
+            "question": question,
+        }
 
-        decision = _validate_current_problem_route(
+        return _validate_current_problem_route(
             query,
             decision,
-            conversation_history,
+            conversation_history=conversation_history,
         )
 
-        return decision
-
-    except Exception:
-        return _fallback_decision(
+    except Exception as exc:
+        fallback = {
+            "action": "rag",
+            "reason": f"Agent model unavailable ({exc}); defaulting to RAG.",
+            "question": "",
+        }
+        return _validate_current_problem_route(
             query,
-            conversation_history,
+            fallback,
+            conversation_history=conversation_history,
         )
-
-
-if __name__ == "__main__":
-
-    query = "My Wi-Fi is not working"
-
-    decision = decide_action(query)
-
-    print("User problem:")
-    print(query)
-
-    print("\nAgent decision:")
-    print(decision)

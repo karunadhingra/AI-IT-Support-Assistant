@@ -1,5 +1,5 @@
 from unittest.mock import patch
-
+import streamlit as st
 
 def test_network_issue():
     from app.router import route_issue
@@ -212,6 +212,7 @@ def test_run_performance_diagnostics():
 
     fake_disk = {"free_gb": 50}
     fake_memory = {"used_percent": 60}
+    fake_processes = {"success": True, "process_count": 10, "recommendation_candidates": []}
 
     with patch(
         "app.router.check_disk_space",
@@ -219,14 +220,19 @@ def test_run_performance_diagnostics():
     ) as mock_disk, patch(
         "app.router.check_memory",
         return_value=fake_memory,
-    ) as mock_memory:
+    ) as mock_memory, patch(
+        "app.router.get_top_processes",
+        return_value=fake_processes,
+    ) as mock_processes:
 
         result = run_diagnostics("performance")
 
     assert result["disk"] == fake_disk
     assert result["memory"] == fake_memory
+    assert result["processes"] == fake_processes
     mock_disk.assert_called_once_with()
     mock_memory.assert_called_once_with()
+    mock_processes.assert_called_once()
 def test_handle_query_handles_diagnostic_failure():
 
     with patch(

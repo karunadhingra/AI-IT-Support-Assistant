@@ -10,7 +10,7 @@ from app.rag import build_context
 
 def test_semantic_search_rejects_unrelated_query():
     article, score = search_knowledge(
-        "My computer is showing a blue screen"
+        "My washing machine is leaking"
     )
 
     assert article is None

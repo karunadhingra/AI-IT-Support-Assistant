@@ -1,28 +1,33 @@
 [
     {
-        "id": "wifi_001",
-        "category": "Network",
-        "problem": "Wi-Fi is not working",
+        "id": "performance_001",
+        "category": "Performance",
+        "problem": "Computer is running very slowly",
         "symptoms": [
-            "Cannot connect to Wi-Fi",
-            "Wi-Fi keeps disconnecting",
-            "Laptop cannot find the wireless network"
+            "Applications take a long time to open",
+            "Computer responds slowly",
+            "System freezes or lags frequently",
+            "Computer is slow after startup"
         ],
         "possible_causes": [
-            "Wi-Fi is disabled",
-            "Router problem",
-            "Network adapter problem",
-            "Incorrect network configuration"
+            "Browser tab overload or hardware acceleration lag",
+            "Pending Windows restart or long system uptime",
+            "Power saving mode throttling CPU speed",
+            "Too many startup programs launching at boot",
+            "Corrupted temporary cache or outdated system drivers"
         ],
         "troubleshooting_steps": [
-            "Check whether Wi-Fi is enabled.",
-            "Restart the Wi-Fi connection.",
-            "Check whether other devices can connect to the same network.",
-            "Restart the router if other devices are also disconnected."
+            "Restart your computer completely (Start -> Power -> Restart) to clear cached memory and reset background system services.",
+            "Close unused browser tabs or put inactive tabs to sleep, as each open tab consumes dedicated memory and CPU threads.",
+            "Unplug and reconnect your laptop charger, and make sure Battery Saver / Energy Saver mode is turned off in the system tray.",
+            "Pause active cloud sync tools (such as OneDrive, Dropbox, or Google Drive) and wait for any background Windows Updates to finish.",
+            "Clear temporary Windows files by opening Storage Settings or running Disk Cleanup to remove cached temp files.",
+            "Turn off visual transparency and animation effects in Windows Accessibility > Visual Effects to reduce GPU and UI lag."
         ],
         "escalate_when": [
-            "The problem continues after restarting the router.",
-            "Multiple devices cannot connect to the network."
+            "The computer remains extremely slow after trying basic troubleshooting steps.",
+            "The system frequently freezes or crashes.",
+            "Hardware problems or deeper OS corruption are suspected."
         ]
     },
     {
@@ -50,100 +55,99 @@
             "No audio device is detected.",
             "The problem continues after checking the output device."
         ]
-    } ,
-    {
-    "id": "performance_001",
-    "category": "Performance",
-    "problem": "Computer is running very slowly",
-    "symptoms": [
-        "Applications take a long time to open",
-        "Computer responds slowly",
-        "System freezes or lags frequently",
-        "Computer is slow after startup"
-    ],
-    "possible_causes": [
-        "Too many applications running",
-        "Low available storage space",
-        "Too many startup applications",
-        "Insufficient system resources",
-        "Background processes consuming resources"
-    ],
-    "troubleshooting_steps": [
-        "Close applications that are not currently being used.",
-        "Open Task Manager or the system monitor and check which applications are using high CPU or memory.",
-        "Check whether the computer has enough free storage space.",
-        "Disable unnecessary applications from starting automatically.",
-        "Restart the computer and check whether the performance improves."
-    ],
-    "escalate_when": [
-        "The computer remains extremely slow after basic troubleshooting.",
-        "The system frequently freezes or crashes.",
-        "Hardware problems such as disk errors are suspected."
-    ]
     },
     {
-    "id": "bluetooth_001",
-    "category": "Bluetooth",
-    "problem": "Bluetooth device is not connecting",
-    "symptoms": [
-        "Bluetooth headphones will not connect",
-        "Bluetooth device cannot be detected",
-        "Previously connected device is no longer connecting",
-        "Bluetooth connection keeps disconnecting"
-    ],
-    "possible_causes": [
-        "Bluetooth is disabled",
-        "Device is not in pairing mode",
-        "Device is already connected to another device",
-        "Bluetooth driver problem",
-        "Bluetooth connection interference"
-    ],
-    "troubleshooting_steps": [
-        "Make sure Bluetooth is enabled on the computer.",
-        "Make sure the Bluetooth device is powered on and in pairing mode.",
-        "Move the device closer to the computer.",
-        "Remove the Bluetooth device from the computer and pair it again.",
-        "Restart Bluetooth and try connecting again.",
-        "Restart the computer if the device still cannot connect."
-    ],
-    "escalate_when": [
-        "Bluetooth cannot be enabled.",
-        "Multiple Bluetooth devices fail to connect.",
-        "The Bluetooth adapter is not detected by the operating system."
-    ]
+        "id": "performance_001",
+        "category": "Performance",
+        "problem": "Computer is running very slowly",
+        "symptoms": [
+            "Applications take a long time to open",
+            "Computer responds slowly",
+            "System freezes or lags frequently",
+            "Computer is slow after startup"
+        ],
+        "possible_causes": [
+            "Too many applications running",
+            "Low available storage space",
+            "Too many startup applications",
+            "Insufficient system resources",
+            "Background processes consuming resources"
+        ],
+        "troubleshooting_steps": [
+            "Close applications that are not currently being used.",
+            "Open Task Manager or the system monitor and check which applications are using high CPU or memory.",
+            "Check whether the computer has enough free storage space.",
+            "Disable unnecessary applications from starting automatically.",
+            "Restart the computer and check whether the performance improves."
+        ],
+        "escalate_when": [
+            "The computer remains extremely slow after basic troubleshooting.",
+            "The system frequently freezes or crashes.",
+            "Hardware problems such as disk errors are suspected."
+        ]
     },
     {
-    "id": "dns_001",
-    "category": "Network",
-    "problem": "Internet is connected but websites are not loading",
-    "symptoms": [
-        "Wi-Fi shows as connected but websites do not open",
-        "Browser cannot load websites",
-        "Some websites fail to load",
-        "Internet works on other devices but not this computer"
-    ],
-    "possible_causes": [
-        "DNS resolution problem",
-        "Browser problem",
-        "Incorrect network configuration",
-        "DNS server is unavailable",
-        "Network connection problem"
-    ],
-    "troubleshooting_steps": [
-        "Check whether other websites can be opened.",
-        "Try opening the website in another browser.",
-        "Check whether other devices can access the internet using the same network.",
-        "Restart the network connection.",
-        "Restart the computer and router if necessary.",
-        "Check whether the computer can resolve domain names correctly."
-    ],
-    "escalate_when": [
-        "Other devices also cannot access websites.",
-        "The problem continues after restarting the network connection.",
-        "DNS or network configuration appears to be corrupted."
-    ]
-        },
-
+        "id": "bluetooth_001",
+        "category": "Bluetooth",
+        "problem": "Bluetooth device is not connecting",
+        "symptoms": [
+            "Bluetooth headphones will not connect",
+            "Bluetooth device cannot be detected",
+            "Previously connected device is no longer connecting",
+            "Bluetooth connection keeps disconnecting"
+        ],
+        "possible_causes": [
+            "Bluetooth is disabled",
+            "Device is not in pairing mode",
+            "Device is already connected to another device",
+            "Bluetooth driver problem",
+            "Bluetooth connection interference"
+        ],
+        "troubleshooting_steps": [
+            "Make sure Bluetooth is enabled on the computer.",
+            "Make sure the Bluetooth device is powered on and in pairing mode.",
+            "Move the device closer to the computer.",
+            "Remove the Bluetooth device from the computer and pair it again.",
+            "Restart Bluetooth and try connecting again.",
+            "Restart the computer if the device still cannot connect."
+        ],
+        "escalate_when": [
+            "Bluetooth cannot be enabled.",
+            "Multiple Bluetooth devices fail to connect.",
+            "The Bluetooth adapter is not detected by the operating system."
+        ]
+    },
+    {
+        "id": "dns_001",
+        "category": "Network",
+        "problem": "Internet is connected but websites are not loading",
+        "symptoms": [
+            "Wi-Fi shows as connected but websites do not open",
+            "Browser cannot load websites",
+            "Some websites fail to load",
+            "Internet works on other devices but not this computer"
+        ],
+        "possible_causes": [
+            "DNS resolution problem",
+            "Browser problem",
+            "Incorrect network configuration",
+            "DNS server is unavailable",
+            "Network connection problem"
+        ],
+        "troubleshooting_steps": [
+            "Check whether other websites can be opened.",
+            "Try opening the website in another browser.",
+            "Check whether other devices can access the internet using the same network.",
+            "Restart the network connection.",
+            "Restart the computer and router if necessary.",
+            "Check whether the computer can resolve domain names correctly."
+        ],
+        "escalate_when": [
+            "Other devices also cannot access websites.",
+            "The problem continues after restarting the network connection.",
+            "DNS or network configuration appears to be corrupted."
+        ]
+    },
     {
         "id": "printer_001",
         "category": "Hardware",
@@ -175,7 +179,6 @@
             "A hardware problem is suspected."
         ]
     },
-
     {
         "id": "keyboard_001",
         "category": "Hardware",
@@ -207,7 +210,6 @@
             "Hardware failure is suspected."
         ]
     },
-
     {
         "id": "mouse_001",
         "category": "Hardware",
@@ -239,7 +241,6 @@
             "Hardware failure is suspected."
         ]
     },
-
     {
         "id": "update_001",
         "category": "Software",
@@ -271,7 +272,6 @@
             "System files appear to be corrupted."
         ]
     },
-
     {
         "id": "application_001",
         "category": "Software",
@@ -303,7 +303,6 @@
             "The application displays a serious or unknown error."
         ]
     },
-
     {
         "id": "overheating_001",
         "category": "Hardware",
@@ -335,7 +334,154 @@
             "The cooling fan is not working properly.",
             "Hardware damage is suspected."
         ]
+    },
+    {
+        "id": "vpn_001",
+        "category": "Network",
+        "problem": "VPN is not connecting",
+        "symptoms": [
+            "VPN software stuck on connecting",
+            "Authentication failed error",
+            "Cannot access company internal network resources",
+            "VPN connects but internet stops working"
+        ],
+        "possible_causes": [
+            "Incorrect login credentials",
+            "MFA (Multi-Factor Authentication) approval timed out",
+            "Local internet connection is unstable",
+            "VPN client software is outdated",
+            "Firewall is blocking the VPN protocol"
+        ],
+        "troubleshooting_steps": [
+            "Check that your regular internet connection is working without the VPN.",
+            "Verify your username and password, ensuring caps lock is off.",
+            "Trigger a new login and immediately check your phone or email to approve the MFA prompt.",
+            "Disconnect the VPN, completely quit the VPN application, reopen it, and try again.",
+            "Restart your computer and your Wi-Fi router."
+        ],
+        "escalate_when": [
+            "Your account is locked due to too many failed attempts.",
+            "The VPN client shows a specific server error (e.g., 'Server Unreachable').",
+            "You still cannot access internal company resources after the VPN shows as 'Connected'."
+        ]
+    },
+    {
+        "id": "account_001",
+        "category": "Security",
+        "problem": "Account locked or password reset needed",
+        "symptoms": [
+            "Invalid username or password error",
+            "Account locked out message",
+            "Cannot log into computer",
+            "Prompted to change password but cannot proceed"
+        ],
+        "possible_causes": [
+            "Too many failed login attempts",
+            "Password has expired",
+            "User forgot the current password",
+            "Caps lock or num lock was accidentally turned on",
+            "Account was disabled by administration"
+        ],
+        "troubleshooting_steps": [
+            "Verify that caps lock is turned off and you are using the correct keyboard language.",
+            "Wait 15 minutes before trying again if the account is temporarily locked.",
+            "Use the 'Forgot Password' or self-service password reset portal if available.",
+            "Clear your browser cache or use an Incognito/Private window if trying to log into a web service."
+        ],
+        "escalate_when": [
+            "The self-service password reset tool is not working or unavailable.",
+            "You are completely locked out of your physical computer.",
+            "You suspect unauthorized access to your account."
+        ]
+    },
+    {
+        "id": "monitor_001",
+        "category": "Hardware",
+        "problem": "External monitor is not detected",
+        "symptoms": [
+            "Second screen is completely black",
+            "Monitor displays 'No Signal'",
+            "Computer only shows the built-in laptop screen",
+            "Display is flickering or the resolution is wrong"
+        ],
+        "possible_causes": [
+            "Loose or disconnected HDMI/DisplayPort cable",
+            "Monitor is powered off or on the wrong input channel",
+            "Graphics driver is outdated or crashed",
+            "Docking station or adapter issue",
+            "Windows display settings are set to 'Show only on 1'"
+        ],
+        "troubleshooting_steps": [
+            "Verify the external monitor is plugged into power and turned on.",
+            "Check the physical cable connection at both the monitor and the computer/docking station.",
+            "Use the monitor's physical buttons to cycle through the Input Sources (HDMI, DP, USB-C).",
+            "Press Windows Key + P and ensure 'Extend' or 'Duplicate' is selected, not 'PC screen only'.",
+            "Disconnect and reconnect the docking station if you are using one."
+        ],
+        "escalate_when": [
+            "The monitor is still not detected after replacing the cable.",
+            "The graphics drivers are missing or reporting an error in Device Manager.",
+            "A hardware failure is suspected with the monitor or docking station."
+        ]
+    },
+    {
+        "id": "email_001",
+        "category": "Software",
+        "problem": "Email is not syncing or sending",
+        "symptoms": [
+            "New emails are not arriving in the inbox",
+            "Emails are stuck in the Outbox",
+            "Application shows 'Disconnected' or 'Working Offline'",
+            "Repeatedly prompting for a password"
+        ],
+        "possible_causes": [
+            "Internet connection is down",
+            "Email client is set to Offline Mode",
+            "Mailbox is completely full (quota exceeded)",
+            "Authentication token has expired",
+            "Server outage"
+        ],
+        "troubleshooting_steps": [
+            "Verify you are connected to the internet by loading a new webpage.",
+            "Check if the email application is in 'Offline Mode' and toggle it back online.",
+            "Close the email application entirely and reopen it to refresh the connection.",
+            "Check your Deleted Items and Sent folders to see if your mailbox is full and needs cleaning.",
+            "Log into the webmail version (e.g., Office.com or Gmail) to see if the issue is just the desktop app."
+        ],
+        "escalate_when": [
+            "You cannot send or receive emails even from the webmail portal.",
+            "You receive bounce-back errors stating your account is blocked from sending.",
+            "The desktop application crashes immediately upon opening."
+        ]
+    },
+    {
+        "id": "bsod_001",
+        "category": "System",
+        "problem": "Computer crashed with a Blue Screen (BSOD)",
+        "symptoms": [
+            "Screen turns blue with an error code and sad face",
+            "Computer unexpectedly restarts on its own",
+            "System completely freezes and requires a hard reset",
+            "Continuous restart loop"
+        ],
+        "possible_causes": [
+            "Failing hardware component (RAM, Hard Drive)",
+            "Corrupt or incompatible device drivers",
+            "Overheating",
+            "Corrupt Windows system files",
+            "Recent unstable software update"
+        ],
+        "troubleshooting_steps": [
+            "Take a picture of or write down the specific 'Stop Code' shown on the blue screen.",
+            "Remove all non-essential USB devices (printers, external drives, webcams) and restart.",
+            "Check if the computer feels excessively hot and ensure the cooling vents are clear.",
+            "If the computer successfully reboots, run Windows Update to see if a patch is available.",
+            "If the crash happens when opening a specific application, try uninstalling or updating that application."
+        ],
+        "escalate_when": [
+            "The computer gets stuck in a continuous restart loop and will not reach the desktop.",
+            "The crashes happen frequently (multiple times a day).",
+            "The Blue Screen indicates a critical hardware failure (e.g., UNMOUNTABLE_BOOT_VOLUME)."
+        ]
     }
-
 ]
-

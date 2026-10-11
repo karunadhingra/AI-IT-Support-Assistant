@@ -1,11 +1,15 @@
+import os
 import numpy as np
-from functools import lru_cache
 
 from app.embeddings import model
-from app.knowledge import load_knowledge_base
+from app.knowledge import KNOWLEDGE_PATH, load_knowledge_base
 
 
 SIMILARITY_THRESHOLD = 0.5
+
+_CACHED_MTIME = None
+_CACHED_KNOWLEDGE = None
+_CACHED_EMBEDDINGS = None
 
 
 def create_article_text(article):
@@ -17,28 +21,38 @@ def create_article_text(article):
     )
 
 
-@lru_cache(maxsize=1)
 def load_article_embeddings():
+    global _CACHED_MTIME, _CACHED_KNOWLEDGE, _CACHED_EMBEDDINGS
+
+    try:
+        current_mtime = os.path.getmtime(KNOWLEDGE_PATH)
+    except OSError:
+        current_mtime = None
+
+    if (
+        _CACHED_KNOWLEDGE is not None
+        and _CACHED_EMBEDDINGS is not None
+        and current_mtime == _CACHED_MTIME
+    ):
+        return _CACHED_KNOWLEDGE, _CACHED_EMBEDDINGS
+
     knowledge = load_knowledge_base()
-
-    article_texts = [
-        create_article_text(article)
-        for article in knowledge
-    ]
-
+    article_texts = [create_article_text(article) for article in knowledge]
     embeddings = model.encode(article_texts)
+
+    _CACHED_MTIME = current_mtime
+    _CACHED_KNOWLEDGE = knowledge
+    _CACHED_EMBEDDINGS = embeddings
 
     return knowledge, embeddings
 
 
 def _calculate_similarities(query):
     knowledge, embeddings = load_article_embeddings()
-
     query_embedding = model.encode(query)
 
     similarities = np.dot(embeddings, query_embedding) / (
-        np.linalg.norm(embeddings, axis=1)
-        * np.linalg.norm(query_embedding)
+        np.linalg.norm(embeddings, axis=1) * np.linalg.norm(query_embedding)
     )
 
     return knowledge, similarities
@@ -46,14 +60,11 @@ def _calculate_similarities(query):
 
 def search_knowledge_top_k(query, top_k=3):
     knowledge, similarities = _calculate_similarities(query)
-
     sorted_indexes = np.argsort(similarities)[::-1]
 
     results = []
-
     for index in sorted_indexes[:top_k]:
         score = similarities[index]
-
         if score >= SIMILARITY_THRESHOLD:
             results.append((knowledge[index], score))
 
@@ -62,7 +73,6 @@ def search_knowledge_top_k(query, top_k=3):
 
 def search_knowledge(query):
     knowledge, similarities = _calculate_similarities(query)
-
     best_index = np.argmax(similarities)
     best_score = similarities[best_index]
 
@@ -73,11 +83,7 @@ def search_knowledge(query):
 
 
 def format_article_response(article):
-    response = []
-
-    response.append(f"Problem: {article['problem']}")
-
-    response.append("\nSymptoms:")
+    response = [f"Problem: {article['problem']}", "\nSymptoms:"]
     for symptom in article["symptoms"]:
         response.append(f"- {symptom}")
 
@@ -94,22 +100,3 @@ def format_article_response(article):
         response.append(f"- {condition}")
 
     return "\n".join(response)
-
-
-if __name__ == "__main__":
-    query = "My Bluetooth headphones won't connect"
-
-    results = search_knowledge_top_k(query, top_k=3)
-
-    print("\nUser query:")
-    print(query)
-
-    if not results:
-        print("\nNo relevant articles found.")
-    else:
-        print(f"\nTop {len(results)} relevant articles:")
-
-        for i, (article, score) in enumerate(results, start=1):
-            print(f"\n--- Result {i} ---")
-            print(f"Problem: {article['problem']}")
-            print(f"Similarity score: {round(float(score), 4)}")
